@@ -12,3 +12,4 @@ yarn-error.log*
 /.idea/
 __pycache__/
 *.sqlite
+.github/copilot-instructions.md
