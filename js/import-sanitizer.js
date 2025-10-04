@@ -77,4 +77,4 @@ export function sanitizeImportPayload(payload) {
 
   return { ok: true, entries: valid, invalid, vs, year };
 }
-    const allowedVs = ['eur','usd','brl'];
+

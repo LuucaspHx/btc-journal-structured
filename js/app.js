@@ -1,689 +1,415 @@
-// App extracted from inline script in index.html
-// This file is loaded as a module via <script type="module" src="js/app.js"></script>
 
-import { normalizeEntry, sanitizeImportPayload, satsFrom as sanitizerSatsFrom } from './import-sanitizer.js';
+// Minimal app module: load/save transactions, render table/stats, import/export with sanitizer
+import { normalizeEntry, sanitizeImportPayload, satsFrom } from './import-sanitizer.js';
 
-document.addEventListener("DOMContentLoaded", () => {
-    // =====================
-    // Estado & Storage
-    // =====================
-    const STORAGE_KEY = 'btcJournalV1';
-    const state = {
-      vs: 'eur',
-      year: new Date().getFullYear(),
-      prices: [],
-      ohlc: [],
-      chartMode: 'line',
-      entries: loadEntries(),
-      chart: null,
-      editingEntryId: null, // Para controlar qual aporte está a ser editado
-    };
+const LS_KEY = 'btc_journal_state_v3';
 
-    // Restaurar preferência de visualização (linha / candles)
-    try {
-      const savedMode = localStorage.getItem('btcJournalChartMode');
-      if (savedMode) state.chartMode = savedMode;
-    } catch (e) { /* no-op */ }
+let state = { txs: [] };
 
-    function loadEntries() {
-      try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); }
-      catch (e) { console.error("Erro ao carregar entradas:", e); return []; }
+function uid() { return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4); }
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed?.txs)) state.txs = parsed.txs;
+  } catch (e) { console.warn('loadState error', e); }
+}
+
+function saveState() {
+  try { localStorage.setItem(LS_KEY, JSON.stringify(state)); }
+  catch (e) { console.error('saveState error', e); }
+}
+
+const fmtBRL = v => (Number.isFinite(Number(v)) ? Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '—');
+const fmtInt = v => (Number.isFinite(Number(v)) ? Number(v).toLocaleString('pt-BR') : '0');
+
+function renderTable() {
+  const tbody = document.getElementById('tx-body');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  for (const tx of state.txs) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${tx.date}</td>
+      <td class="num">${fmtInt(tx.sats)}</td>
+      <td class="num">${fmtBRL(tx.price)}</td>
+      <td>${tx.note ?? ''}</td>
+      <td><button class="del" data-id="${tx.id}">Apagar</button></td>
+    `;
+    tbody.appendChild(tr);
+  }
+}
+
+function renderStats() {
+  const el = document.getElementById('stats');
+  if (!el) return;
+  const totalSats = state.txs.reduce((acc, t) => acc + Number(t.sats || 0), 0);
+  const totalBRL = state.txs.reduce((acc, t) => acc + Number(t.price || 0), 0);
+  const brlPerSat = totalSats > 0 ? totalBRL / totalSats : 0;
+  el.innerHTML = `
+    <div>Total sats: <strong>${fmtInt(totalSats)}</strong></div>
+    <div>Investido: <strong>${fmtBRL(totalBRL)}</strong></div>
+    <div>Custo médio (BRL/sat): <strong>${brlPerSat.toFixed(6)}</strong></div>
+  `;
+}
+
+function bindForm() {
+  const form = document.getElementById('tx-form');
+  if (!form) return;
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const date = document.getElementById('tx-date').value;
+    const sats = Number(document.getElementById('tx-sats').value);
+    const price = Number(document.getElementById('tx-price').value);
+    const note = document.getElementById('tx-note').value?.trim();
+    if (!date || !sats || !isFinite(sats) || !isFinite(price) || sats <= 0 || price <= 0) {
+      showMessage('Preencha data, sats (>0) e preço (>0) corretamente.', 'warn');
+      return;
     }
-    function saveEntries() {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state.entries));
-    }
-    function uid() { return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4); }
+    state.txs.push({ id: uid(), date, sats: Math.floor(sats), price: Number(price), note });
+    saveState();
+    renderTable();
+    renderStats();
+    renderChart();
+    form.reset();
+  });
+}
 
-    // =====================
-    // UI helpers
-    // =====================
-    const $ = sel => document.querySelector(sel);
-    const monthsShort = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-
-    function setLoading(isLoading) {
-      const overlay = $('#loadingOverlay');
-      if (isLoading) {
-        overlay.classList.add('visible');
-      } else {
-        overlay.classList.remove('visible');
-      }
-      $('#fetchPriceBtn').disabled = isLoading;
-      $('#vsCurrency').disabled = isLoading;
-      $('#addBtn').disabled = isLoading;
-      // Desabilitar botões de edição/exclusão durante o carregamento
-      document.querySelectorAll('.entry button').forEach(btn => btn.disabled = isLoading);
-    }
-
-    function fmt(n, dec = 2) {
-      if (Number.isNaN(n) || !isFinite(n)) return '—';
-      return new Intl.NumberFormat('pt-PT', { minimumFractionDigits: dec, maximumFractionDigits: dec }).format(n);
-    }
-
-    function satsFrom(fiat, price) {
-      if (!price || !fiat || price <= 0) return 0;
-      const btc = fiat / price;
-      return Math.floor(btc * 1e8);
-    }
-
-    function plFor(entry, currentPrice) {
-      const btc = entry.sats / 1e8;
-      const invested = (entry.fiat + (entry.fee || 0));
-      const nowValue = btc * currentPrice;
-      const pl = nowValue - invested;
-      const pct = invested > 0 ? (pl / invested) * 100 : 0;
-      return { pl, pct };
-    }
-
-    function pmMedio(entries) {
-      let btcTot = 0, custoTot = 0;
-      for (const e of entries.filter(x => !x.closed)) {
-        const btc = e.sats / 1e8;
-        custoTot += (e.fiat + (e.fee || 0));
-        btcTot += btc;
-      }
-      if (btcTot === 0) return 0;
-      return custoTot / btcTot;
-    }
-
-    function totalInvested(entries) {
-      return entries.filter(e => !e.closed).reduce((sum, e) => sum + (e.fiat + (e.fee || 0)), 0);
-    }
-
-    function currentPortfolioValue(entries, currentPrice) {
-      return entries.filter(e => !e.closed).reduce((sum, e) => sum + (e.sats / 1e8 * currentPrice), 0);
-    }
-
-    function totalReturnPercentage(entries, currentPrice) {
-      const invested = totalInvested(entries);
-      const currentValue = currentPortfolioValue(entries, currentPrice);
-      if (invested === 0) return 0;
-      return ((currentValue - invested) / invested) * 100;
-    }
-
-    // =====================
-    // Preços (CoinGecko)
-    // =====================
-    async function fetchPrices(days = 400) {
-      setLoading(true);
-      try {
-        const vs = state.vs;
-        const url = `https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=${vs}&days=${days}`;
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`API do CoinGecko falhou: ${res.statusText}`);
-        const data = await res.json();
-        state.prices = (data.prices || []).map(([t, p]) => ({ t, p }));
-      } catch (error) {
-        console.error("Erro ao buscar preços:", error);
-        alert("Não foi possível carregar os dados de preços. Por favor, verifique a sua conexão e tente novamente.");
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    async function fetchOHLC(days = 90) {
-      setLoading(true);
-      try {
-        const vs = state.vs;
-        const url = `https://api.coingecko.com/api/v3/coins/bitcoin/ohlc?vs_currency=${vs}&days=${days}`;
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`CoinGecko OHLC falhou: ${res.statusText}`);
-        const data = await res.json();
-        // data: array de [timestamp, open, high, low, close]
-        state.ohlc = (data || []).map(d => ({ t: d[0], o: d[1], h: d[2], l: d[3], c: d[4] }));
-      } catch (err) {
-        console.warn('Não foi possível carregar OHLC:', err);
-        state.ohlc = [];
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    async function fetchHistoricalPriceForDate(dateStr) {
-      const ts = new Date(dateStr + 'T12:00:00').getTime();
-      if (!state.prices.length) await fetchPrices(2000);
-      let best = null, bestDiff = Infinity;
-      for (const pt of state.prices) {
-        const d = Math.abs(pt.t - ts);
-        if (d < bestDiff) { bestDiff = d; best = pt; }
-      }
-      return best ? best.p : null;
-    }
-
-    function currentPrice() {
-      if (!state.prices.length) return 0;
-      return state.prices[state.prices.length - 1].p;
-    }
-
-    // =====================
-    // Renders
-    // =====================
-    function renderAll() {
-        renderKPI();
-        renderMonths();
+function bindTableActions() {
+  const tbody = document.getElementById('tx-body');
+  if (!tbody) return;
+  tbody.addEventListener('click', async (e) => {
+    const btn = e.target.closest('button.del');
+    if (!btn) return;
+    const id = btn.dataset.id;
+    const idx = state.txs.findIndex(t => t.id === id);
+    if (idx >= 0) {
+      if (!(await confirmModalAsync('Apagar esta transação?'))) return;
+      const removed = state.txs.splice(idx, 1)[0];
+      saveState();
+      renderTable();
+      renderStats();
+      renderChart();
+      // Mostrar opção de desfazer
+      showMessage('Transação apagada.', 'info', 6000, 'Desfazer', () => {
+        // Restaurar a entrada no início (ou na mesma posição)
+        state.txs.splice(idx, 0, removed);
+        saveState();
+        renderTable();
+        renderStats();
         renderChart();
+        showMessage('Transação restaurada.', 'success');
+      });
     }
+  });
+}
 
-    // =====================
-    // UI wiring
-    // =====================
-    // Chart mode select
-    const chartModeSelect = $('#chartMode');
-    chartModeSelect.value = state.chartMode;
-    chartModeSelect.addEventListener('change', async (e) => {
-      state.chartMode = e.target.value;
-      try { localStorage.setItem('btcJournalChartMode', state.chartMode); } catch (err) { /* no-op */ }
-      if (state.chartMode === 'candles') {
-        // obter OHLC (90 dias por padrão) e re-render
-        await fetchOHLC(90);
+function bindExport() {
+  const btn = document.getElementById('btn-export');
+  if (!btn) return;
+  btn.addEventListener('click', () => {
+    const data = { txs: state.txs };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `btc_journal_backup_${new Date().toISOString().slice(0,10)}.json`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  });
+}
+
+function bindImport() {
+  const input = document.getElementById('file-import');
+  if (!input) return;
+  input.addEventListener('change', async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      // sanitizeImportPayload aceita array ou { entries: [...] }
+      const res = sanitizeImportPayload(parsed);
+      if (!res.ok) {
+        showMessage(res.reason || 'Arquivo inválido', 'error');
+        input.value = '';
+        return;
       }
+      if (!(await confirmModalAsync(`Foram encontradas ${res.entries.length} entradas válidas. Substituir os dados locais?`))) { input.value = ''; return; }
+      state.txs = res.entries.map(e => ({ id: e.id || uid(), date: e.date, sats: e.sats, price: e.fiat ?? e.price ?? 0, note: e.note ?? '' }));
+      saveState();
+      renderTable();
+      renderStats();
       renderChart();
-    });
+      showMessage('Importação concluída.', 'success');
+    } catch (err) {
+      console.error('Import error', err);
+      showMessage('Erro ao importar arquivo. Verifique o formato.', 'error');
+    }
+    input.value = '';
+  });
+}
 
-    // vsCurrency change should refresh prices and ohlc
-    $('#vsCurrency').addEventListener('change', async (e) => {
-      state.vs = e.target.value;
-      await fetchPrices(400);
-      if (state.chartMode === 'candles') await fetchOHLC(90);
-      renderAll();
-    });
+// Mensagens/banners UI
+function showMessage(text, type = 'info', timeout = 4500, actionLabel = null, actionCallback = null) {
+  const container = document.getElementById('messageContainer');
+  if (!container) { if (typeof window !== 'undefined' && window.alert) window.alert(text); return; }
+  const el = document.createElement('div');
+  el.className = `msg ${type}`;
+  const btnHtml = `<button class="close" aria-label="fechar">×</button>`;
+  const actionHtml = actionLabel ? `<button class="action">${actionLabel}</button>` : '';
+  el.innerHTML = `<span>${text}</span>${actionHtml}${btnHtml}`;
+  container.appendChild(el);
+  const closeBtn = el.querySelector('.close');
+  closeBtn.addEventListener('click', () => el.remove());
+  if (actionLabel && typeof actionCallback === 'function') {
+    const actionBtn = el.querySelector('.action');
+    actionBtn.addEventListener('click', () => { try { actionCallback(); } catch (e) { console.error(e); } el.remove(); });
+  }
+  if (timeout > 0) setTimeout(() => el.remove(), timeout);
+}
 
-    function renderChart() {
-      const ctx = document.getElementById('btcChart').getContext('2d');
-      const labels = state.prices.map(pt => pt.t);
-      const priceData = state.prices.map(pt => pt.p);
-      const points = state.entries.filter(e => !e.closed).map(e => ({ x: new Date(e.date).getTime(), y: e.price }));
-      
-      const averagePrice = pmMedio(state.entries);
+// Confirm modal async
+function confirmModalAsync(message) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('confirmModal');
+    const msg = document.getElementById('confirmModalMessage');
+    const ok = document.getElementById('confirmOkBtn');
+    const cancel = document.getElementById('confirmCancelBtn');
+    if (!modal || !msg || !ok || !cancel) { resolve(window.confirm(message)); return; }
+    msg.textContent = message;
+    modal.style.display = 'flex';
+    function cleanup() {
+      ok.removeEventListener('click', onOk);
+      cancel.removeEventListener('click', onCancel);
+      modal.style.display = 'none';
+    }
+    function onOk() { cleanup(); resolve(true); }
+    function onCancel() { cleanup(); resolve(false); }
+    ok.addEventListener('click', onOk);
+    cancel.addEventListener('click', onCancel);
+  });
+}
+// Expor para handlers herdados (se necessário)
+window.confirmModalAsync = confirmModalAsync;
 
-        // Monta datasets dinamicamente: linha de preço sempre disponível; candles opcionais
-        const datasets = [];
+// Migration: detect old key 'btcJournalV1' and offer migration with backup
+function detectAndOfferMigration() {
+  try {
+    const old = localStorage.getItem('btcJournalV1');
+    if (!old) return;
+    // Se já existem dados no novo formato, não sobrescrever automaticamente
+    const hasNew = localStorage.getItem(LS_KEY);
+    const proceed = confirm('Dados antigos detectados (btcJournalV1). Deseja migrar para o novo formato? Será criado um backup antes.');
+    if (!proceed) return;
+    // criar backup timestamped
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    try { localStorage.setItem(`btcJournalV1.bak.${stamp}`, old); } catch (e) { console.warn('Backup antigo falhou', e); }
+    // tentar parse e normalizar
+    let parsed;
+    try { parsed = JSON.parse(old); } catch (e) { showMessage('Dados antigos inválidos. Migração abortada.', 'error'); return; }
+    // Suportar array de entradas ou object { entries: [...] }
+    const payload = Array.isArray(parsed) ? { entries: parsed } : (parsed && parsed.entries ? parsed : null);
+    if (!payload) { showMessage('Formato de backup antigo não reconhecido.', 'error'); return; }
+    const res = sanitizeImportPayload(payload);
+    if (!res.ok) { showMessage('Migração detectou entradas inválidas. Nenhuma alteração aplicada.', 'error'); return; }
+    // Aplicar migracao: mapear para txs minimal
+    state.txs = res.entries.map(e => ({ id: e.id || uid(), date: e.date, sats: e.sats, price: e.fiat ?? e.price ?? 0, note: e.note ?? '' }));
+    saveState();
+    renderTable();
+    renderStats();
+    renderChart();
+    showMessage('Migração concluída com sucesso. Backup criado.', 'success');
+  } catch (err) {
+    console.error('Migration error', err);
+    showMessage('Erro durante a migração. Veja a consola.', 'error');
+  }
+}
 
-        // Candles (quando disponíveis e modo selecionado)
-        if (state.ohlc && state.ohlc.length > 0 && (state.chartMode === 'candles' || state.chartMode === undefined)) {
-          // Mapear para o formato do plugin: {x: timestamp, o, h, l, c}
-          const candData = state.ohlc.map(d => ({ x: d.t, o: d.o, h: d.h, l: d.l, c: d.c }));
-          datasets.push({
-            label: 'OHLC',
-            type: 'candlestick',
-            data: candData,
-            fractionalDigitsCount: 2,
-            borderColor: ctx && ctx.canvas ? undefined : undefined,
-            // colorização por vela: verde para alta, vermelho para baixa
-            color: { up: 'rgba(34,197,94,0.95)', down: 'rgba(239,68,68,0.95)' }
-          });
-        }
+function boot() {
+  loadState();
+  // tentar detectar e migrar dados antigos (btcJournalV1)
+  detectAndOfferMigration();
+  bindForm();
+  bindTableActions();
+  bindExport();
+  bindImport();
+  renderTable();
+  renderStats();
+  // Inicializar chart com dados básicos
+  try { renderChart(); } catch (e) { /* ignore if Chart not available yet */ }
+}
 
-        // Linha de preço histórico (manteve-se)
-        datasets.push({ label: `BTC/${state.vs.toUpperCase()}`, data: priceData, parsing: false, borderWidth: 1.8, tension: 0.15, borderColor: 'var(--brand)', type: 'line' });
+document.addEventListener('DOMContentLoaded', boot);
 
-        // Scatter de aportes (sempre acima)
-        datasets.push({ type: 'scatter', label: 'Aportes (abertos)', data: points, pointRadius: 4, pointHoverRadius: 6, backgroundColor: 'var(--green)', order: 10 });
+// ------------------ Chart / Fetch helpers ------------------
+// Pegue preços históricos (CoinGecko) para BTC vs currency em dias
+async function fetchPrices(days = 90) {
+  const vs = document.getElementById('vsCurrency')?.value || 'eur';
+  try {
+    const res = await fetch(`https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=${vs}&days=${days}`);
+    if (!res.ok) throw new Error('Erro ao buscar preços');
+    const json = await res.json();
+    // json.prices => [ [timestamp, price], ... ]
+    const arr = (json.prices || []).map(p => ({ t: p[0], p: p[1] }));
+    // guardar temporariamente no state
+    state.prices = arr;
+    return arr;
+  } catch (err) {
+    console.error('fetchPrices error', err);
+    showMessage('Erro ao obter preços históricos.', 'warn');
+    return [];
+  }
+}
 
-        const data = { labels, datasets };
+// Fetch OHLC (candles) via CoinGecko
+async function fetchOHLC(days = 90) {
+  const vs = document.getElementById('vsCurrency')?.value || 'eur';
+  try {
+    const res = await fetch(`https://api.coingecko.com/api/v3/coins/bitcoin/ohlc?vs_currency=${vs}&days=${days}`);
+    if (!res.ok) throw new Error('Erro ao buscar OHLC');
+    const json = await res.json();
+    // json: array of [timestamp, open, high, low, close]
+    state.ohlc = (json || []).map(d => ({ t: d[0], o: d[1], h: d[2], l: d[3], c: d[4] }));
+    return state.ohlc;
+  } catch (err) {
+    console.error('fetchOHLC error', err);
+    showMessage('Erro ao obter dados OHLC.', 'warn');
+    state.ohlc = [];
+    return [];
+  }
+}
 
-      const cfg = {
-        type: 'line',
-        data,
-        options: {
-          animation: false,
-          responsive: true,
-          maintainAspectRatio: false,
-          scales: {
-            x: { type: 'time', time: { unit: 'month' }, grid: { color: '#1e2432' } },
-            y: { grid: { color: '#1e2432' } }
-          },
-          plugins: {
-            legend: { labels: { color: '#cbd5e1' } },
-            tooltip: { mode: 'nearest', intersect: false },
-            annotation: {
-              annotations: {
-                line1: {
-                  type: 'line',
-                  yMin: averagePrice,
-                  yMax: averagePrice,
-                  borderColor: 'var(--muted)',
-                  borderWidth: 1.5,
-                  borderDash: [6, 6],
-                  display: averagePrice > 0, // Só mostra a linha se houver um PM > 0
-                  label: {
-                    content: `PM: ${fmt(averagePrice)}`,
-                    position: 'end',
-                    backgroundColor: 'rgba(138, 148, 166, 0.2)',
-                    color: 'var(--muted)',
-                    font: { size: 10 },
-                    padding: { x: 4, y: 2 },
-                    borderRadius: 4,
-                    yAdjust: -10,
-                  }
-                }
+function pmMedio(entries = []) {
+  // Preço médio simples (fiat total / sats total)
+  const totalFiat = entries.reduce((s, e) => s + Number(e.price || e.fiat || 0), 0);
+  const totalSats = entries.reduce((s, e) => s + Number(e.sats || 0), 0);
+  if (totalSats === 0) return 0;
+  return totalFiat / totalSats;
+}
+
+let _chart = null;
+function renderChart() {
+  const canvas = document.getElementById('btcChart');
+  if (!canvas || typeof Chart === 'undefined') return;
+  // Preencher preços se vazio
+  if (!Array.isArray(state.prices) || state.prices.length === 0) { fetchPrices(90).then(() => renderChart()); return; }
+  const ctx = canvas.getContext('2d');
+  const labels = state.prices.map(p => p.t);
+  const priceData = state.prices.map(p => p.p);
+
+  // Aportes abertos como pontos (inclui metadados para tooltip)
+  const currentPricePoint = (state.prices && state.prices.length) ? state.prices[state.prices.length - 1].p : null;
+  const points = (state.txs || []).map(tx => {
+    const plPct = (currentPricePoint && tx.price) ? ((currentPricePoint - tx.price) / tx.price) * 100 : 0;
+    const color = plPct > 0 ? 'var(--green)' : (plPct < 0 ? 'var(--red)' : 'var(--amber)');
+    return { x: new Date(tx.date).getTime(), y: tx.price, sats: tx.sats, note: tx.note, plPct, color };
+  });
+
+  const datasets = [];
+  // Candles, se disponíveis e modo selecionado
+  const mode = document.getElementById('chartMode')?.value || 'line';
+  if (mode === 'candles' && Array.isArray(state.ohlc) && state.ohlc.length > 0) {
+    const candData = state.ohlc.map(d => ({ x: d.t, o: d.o, h: d.h, l: d.l, c: d.c }));
+    datasets.push({ label: 'OHLC', type: 'candlestick', data: candData, fractionalDigitsCount: 2, color: { up: 'rgba(34,197,94,0.95)', down: 'rgba(239,68,68,0.95)' } });
+  }
+
+  datasets.push({ label: `BTC/${(document.getElementById('vsCurrency')?.value || 'eur').toUpperCase()}`, data: priceData, parsing: false, borderWidth: 1.2, tension: 0.2, borderColor: 'var(--brand)', type: 'line' });
+  // Usar cores por ponto com base no P/L
+  const pointColors = points.map(p => p.color || 'var(--green)');
+  const pointRadii = points.map(p => Math.min(10, 3 + Math.log10((p.sats || 1) + 1))); // radius ~ sats (capped)
+  datasets.push({ type: 'scatter', label: 'Aportes', data: points, pointRadius: pointRadii, backgroundColor: pointColors, borderColor: '#0b1220', borderWidth: 1, order: 10 });
+
+  const data = { labels, datasets };
+  // Preço médio para anotar
+  const avgPrice = pmMedio(state.txs || []);
+
+  const cfg = {
+    type: 'line',
+    data,
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: { x: { type: 'time' }, y: {} },
+      plugins: {
+        legend: { display: true },
+        tooltip: {
+          callbacks: {
+            title: function(items) {
+              if (!items || !items.length) return '';
+              const it = items[0];
+              // tentar extrair timestamp
+              const t = it.parsed?.x ?? it.label ?? it.parsed;
+              const dt = t ? new Date(t) : new Date();
+              return dt.toLocaleString('pt-BR', { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+            },
+            label: function(context) {
+              const ds = context.dataset;
+              const curr = (document.getElementById('vsCurrency')?.value || 'eur').toUpperCase();
+              const formatCurrency = (v) => {
+                try { return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: curr }).format(v); } catch (e) { return v; }
+              };
+              if (ds.type === 'scatter') {
+                const v = context.raw;
+                const sats = v.sats ?? '';
+                const note = v.note ? ` — ${v.note}` : '';
+                return [`Preço: ${formatCurrency(v.y)}${note}`, `Sats: ${Number(sats).toLocaleString('pt-BR')}`];
               }
+              // linha de preço
+              const value = context.parsed?.y ?? context.formattedValue;
+              return `${context.dataset.label}: ${formatCurrency(value)} `;
             }
           }
         }
+      }
+    }
+  };
+
+  // Registrar annotation de PM se o plugin existir
+  try {
+    if (typeof Chart !== 'undefined' && Chart.registry && Chart.registry.getPlugin && Chart.registry.getPlugin('annotation')) {
+      // plugin já registrado via CDN script tag; adicionar annotation dinamicamente
+      cfg.options.plugins.annotation = cfg.options.plugins.annotation || { annotations: {} };
+      cfg.options.plugins.annotation.annotations.pmLine = {
+        type: 'line', yMin: avgPrice, yMax: avgPrice, borderColor: '#9ca3ff', borderWidth: 1.2, borderDash: [6,6], label: { content: `PM ${(avgPrice).toFixed(2)}`, enabled: true, position: 'end' }
       };
-
-      if (state.chart) { state.chart.destroy(); }
-      state.chart = new Chart(ctx, cfg);
     }
+  } catch (e) { /* ignore if annotation plugin absent */ }
 
-    function renderMonths() {
-      const grid = $('#monthsGrid');
-      grid.innerHTML = '';
-      const price = currentPrice();
-      for (let m = 0; m < 12; m++) {
-        const box = document.createElement('div');
-        box.className = 'monthBox';
-        const monthEntries = state.entries
-        .filter(e => !e.deleted && new Date(e.date).getFullYear() === state.year && new Date(e.date).getMonth() === m)
-        .sort((a, b) => new Date(a.date) - new Date(b.date));
+  if (_chart) try { _chart.destroy(); } catch (e) {}
+  _chart = new Chart(ctx, cfg);
 
-        const head = document.createElement('div');
-        head.className = 'monthHead';
-        head.innerHTML = `<span>${monthsShort[m]} ${state.year}</span><span class=\"muted\">${monthEntries.length} aporte(s)</span>`;
-        box.appendChild(head);
+  // Atualizar legenda dinâmica
+  updateLegend(points);
+}
 
-        if (monthEntries.length === 0) {
-          const empty = document.createElement('div'); empty.className = 'note';
-          empty.textContent = 'Sem entradas';
-          box.appendChild(empty);
-        } else {
-          for (const e of monthEntries) {
-            const { pl, pct } = plFor(e, price);
-            const cls = e.closed ? 'flat' : (pl > 0 ? 'up' : (pl < 0 ? 'down' : 'flat'));
-            const div = document.createElement('div');
-            div.className = 'entry';
-            const dateNice = new Date(e.date).toLocaleDateString('pt-PT');
-            div.innerHTML = `
-              <div class=\"tags\">\n                <span class=\"tag\">${dateNice}</span>\n                <span class=\"tag\">${fmt(e.fiat)} ${state.vs.toUpperCase()}</span>\n                <span class=\"tag\">PM: ${fmt(e.price)}</span>\n                ${e.closed ? '<span class=\"tag\">Fechado</span>' : ''}\n              </div>\n              <div style=\"display:flex; align-items:center; gap:8px;\">\n                <span class=\"pl ${cls}\">${pl >= 0 ? '+' : ''}${fmt(pl)} (${fmt(pct, 1)}%)</span>\n                <button class=\"ghost\" data-act=\"toggle\" data-id=\"${e.id}\">${e.closed ? 'Reabrir' : 'Fechar'}</button>\n                <button class=\"ghost\" data-act=\"edit\" data-id=\"${e.id}\">Editar</button> <!-- NOVO: Botão Editar -->\n                <button class=\"ghost\" data-act=\"del\" data-id=\"${e.id}\">Apagar</button>\n              </div>`;
-            box.appendChild(div);
-          }
-        }
-        grid.appendChild(box);
-      }
-    }
+function updateLegend(points = []) {
+  const container = document.getElementById('chartLegend');
+  if (!container) return;
+  const pos = points.filter(p => p.plPct > 0).length;
+  const neg = points.filter(p => p.plPct < 0).length;
+  const neu = points.filter(p => p.plPct === 0).length;
+  container.innerHTML = `
+    <div class="legend-item"><span class="legend-swatch" style="background:var(--green)"></span><span class="legend-label">Positivos: ${pos}</span></div>
+    <div class="legend-item"><span class="legend-swatch" style="background:var(--red)"></span><span class="legend-label">Negativos: ${neg}</span></div>
+    <div class="legend-item"><span class="legend-swatch" style="background:var(--amber)"></span><span class="legend-label">Neutros: ${neu}</span></div>
+  `;
+}
 
-    function renderKPI() {
-      const price = currentPrice();
-      const openEntries = state.entries.filter(e => !e.closed);
-
-      $('#kpiPrice').textContent = `${fmt(price)} ${state.vs.toUpperCase()}`;
-      $('#kpiUpdated').textContent = price > 0 ? `Atualizado: ${new Date().toLocaleString('pt-PT')}` : 'A aguardar dados...';
-      $('#kpiOpen').textContent = openEntries.length;
-
-      let plSum = 0;
-      for (const e of openEntries) {
-        plSum += plFor(e, price).pl;
-      }
-      $('#kpiPL').textContent = `${plSum >= 0 ? '+' : ''}${fmt(plSum)} ${state.vs.toUpperCase()}`;
-      
-      const pm = pmMedio(state.entries);
-      $('#kpiPM').textContent = pm > 0 ? `${fmt(pm)} ${state.vs.toUpperCase()}` : '—';
-
-      const totalInv = totalInvested(state.entries);
-      $('#kpiTotalInvested').textContent = `${fmt(totalInv)} ${state.vs.toUpperCase()}`;
-
-      const currentVal = currentPortfolioValue(state.entries, price);
-      $('#kpiCurrentValue').textContent = `${fmt(currentVal)} ${state.vs.toUpperCase()}`;
-
-      const totalReturnPct = totalReturnPercentage(state.entries, price);
-      const totalReturnCls = totalReturnPct > 0 ? 'up' : (totalReturnPct < 0 ? 'down' : 'flat');
-      $('#kpiTotalReturnPct').textContent = `${totalReturnPct >= 0 ? '+' : ''}${fmt(totalReturnPct, 2)}%`;
-      $('#kpiTotalReturnPct').className = `value pl ${totalReturnCls}`;
-    }
-
-    // =====================
-    // Produtividade (novo)
-    // =====================
-    function monthsWithContributions(year) {
-      const months = new Set();
-      for (const e of state.entries) {
-        if (e.deleted) continue;
-        const d = new Date(e.date);
-        if (d.getFullYear() === year) months.add(d.getMonth());
-      }
-      return Array.from(months).sort((a,b)=>a-b);
-    }
-
-    function avgPerMonth(year) {
-      const months = monthsWithContributions(year);
-      const total = state.entries.filter(e => !e.deleted && new Date(e.date).getFullYear() === year).length;
-      return months.length === 0 ? 0 : total / 12; // média sobre 12 meses
-    }
-
-    function currentStreak() {
-      // Conta meses consecutivos (mais recente -> passado) com ao menos 1 aporte
-      const now = new Date();
-      let streak = 0;
-      for (let i = 0; i < 24; i++) { // limite 2 anos
-        const check = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        const monthHas = state.entries.some(e => {
-          if (e.deleted) return false;
-          const d = new Date(e.date);
-          return d.getFullYear() === check.getFullYear() && d.getMonth() === check.getMonth();
-        });
-        if (monthHas) streak++; else break;
-      }
-      return streak;
-    }
-
-    function updateProductivityCard() {
-      try {
-        const months = monthsWithContributions(state.year);
-        $('#prodMonths').textContent = months.length;
-        $('#prodAvg').textContent = fmt(avgPerMonth(state.year), 2);
-        $('#prodStreak').textContent = currentStreak();
-
-        // Desafio: 1 aporte / mês no ano corrente
-        const monthsFilled = monthsWithContributions(new Date().getFullYear()).length;
-        const progress = Math.min(monthsFilled, 12);
-        $('#prodProgress').value = progress;
-        $('#prodProgressLabel').textContent = `${progress}/12`;
-      } catch (err) { console.warn('Erro ao atualizar produtividade', err); }
-    }
-
-    // Desafio simples: persistir status em localStorage
-    const CHALLENGE_KEY = 'btcJournal.challenge.1pm';
-    function startChallenge() { localStorage.setItem(CHALLENGE_KEY, JSON.stringify({ startedAt: new Date().toISOString() })); updateChallengeButtons(); }
-    function stopChallenge() { localStorage.removeItem(CHALLENGE_KEY); updateChallengeButtons(); }
-    function updateChallengeButtons() {
-      const running = !!localStorage.getItem(CHALLENGE_KEY);
-      $('#startChallengeBtn').disabled = running;
-      $('#stopChallengeBtn').disabled = !running;
-    }
-
-    // Integrar atualização de produtividade ao renderAll
-    const oldRenderAll = renderAll;
-    function renderAll() {
-      renderKPI();
-      renderMonths();
-      renderChart();
-      updateProductivityCard();
-      updateChallengeButtons();
-    }
-
-    // Interações
-    function hydrateYearOptions() {
-      const sel = $('#yearSelect');
-      const cur = new Date().getFullYear();
-      const years = [cur - 2, cur - 1, cur, cur + 1];
-      sel.innerHTML = years.map(y => `<option value=\"${y}\" ${y === state.year ? 'selected' : ''}>${y}</option>`).join('');
-    }
-
-    function bindEvents() {
-      $('#vsCurrency').addEventListener('change', async (e) => {
-        state.vs = e.target.value;
-        await fetchPrices(800);
-        renderAll();
-      });
-      $('#yearSelect').addEventListener('change', (e) => {
-        state.year = parseInt(e.target.value, 10);
-        renderMonths();
-      });
-      $('#resetBtn').addEventListener('click', () => {
-        if (confirm('Tem a certeza que quer apagar todos os aportes salvos localmente? Esta ação é irreversível.')) {
-          state.entries = [];
-          saveEntries();
-          renderAll();
-        }
-      });
-      $('#fetchPriceBtn').addEventListener('click', async () => {
-        const dateStr = $('#dateInput').value;
-        if (!dateStr) { alert('Por favor, escolha uma data primeiro.'); return; }
-        const p = await fetchHistoricalPriceForDate(dateStr);
-        if (p) { $('#priceInput').value = Number(p).toFixed(2); recalcSats(); }
-        else alert('Não foi possível obter o preço para essa data.');
-      });
-      $('#fiatInput').addEventListener('input', recalcSats);
-      $('#priceInput').addEventListener('input', recalcSats);
-      $('#addBtn').addEventListener('click', () => {
-        const dateStr = $('#dateInput').value;
-        const price = parseFloat($('#priceInput').value);
-        const fiat = parseFloat($('#fiatInput').value);
-        const fee = parseFloat($('#feeInput').value) || 0;
-        if (!dateStr || !isFinite(price) || !isFinite(fiat) || price <= 0) {
-          alert('Preencha, no mínimo, a data, o preço do BTC (maior que zero) e o valor do aporte.'); return;
-        }
-        const sats = satsFrom(fiat, price);
-        const entry = { id: uid(), date: dateStr, price, fiat, fee, sats, closed: false, weight: parseFloat($('#weightInput').value) || null };
-        state.entries.push(entry);
-        saveEntries();
-        renderAll();
-        $('#fiatInput').value = '';
-        $('#feeInput').value = '';
-        $('#satsOutput').value = '';
-        $('#weightInput').value = '';
-      });
-      $('#monthsGrid').addEventListener('click', (e) => {
-        const btn = e.target.closest('button[data-id]');
-        if (!btn) return;
-        const id = btn.dataset.id;
-        const act = btn.dataset.act;
-        const idx = state.entries.findIndex(x => x.id === id);
-        if (idx < 0) return;
-
-        if (act === 'toggle') {
-          state.entries[idx].closed = !state.entries[idx].closed;
-        } else if (act === 'del') {
-          if (confirm('Tem a certeza que quer apagar este aporte?')) {
-            state.entries.splice(idx, 1);
-          }
-        } else if (act === 'edit') { 
-        state.editingEntryId = id;
-        const entryToEdit = state.entries[idx];
-        $('#editDateInput').value = entryToEdit.date;
-        $('#editPriceInput').value = entryToEdit.price;
-        $('#editFiatInput').value = entryToEdit.fiat;
-        $('#editFeeInput').value = entryToEdit.fee;
-        $('#editWeightInput').value = entryToEdit.weight;
-        $('#editModal').style.display = 'flex'; 
-        }
-        saveEntries();
-        renderAll();
-      });
-      $('#exportBtn').addEventListener('click', () => {
-        const dataStr = JSON.stringify({ vs: state.vs, year: state.year, entries: state.entries }, null, 2);
-        const blob = new Blob([dataStr], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `btc-journal-backup-${new Date().toISOString().slice(0,10)}.json`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      });
-      // REGION: Import Validation + Backup (delegated to shared module)
-      function backupLocalData() {
-        try {
-          const snap = localStorage.getItem('btcJournalV1') ?? '[]';
-          const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-          localStorage.setItem(`btcJournalV1.bak.${stamp}`, snap);
-        } catch (e) { console.error('Falha ao criar backup local:', e); }
-      }
-
-  // usar as funções importadas do módulo sanitizer
-
-      function listBackups() {
-        const keys = [];
-        for (let i = 0; i < localStorage.length; i++) {
-          const k = localStorage.key(i);
-          if (k && k.startsWith('btcJournalV1.bak.')) keys.push(k);
-        }
-        // ordenar descendente (mais recente primeiro)
-        return keys.sort().reverse();
-      }
-
-      async function restoreBackup(key) {
-        if (!key) return false;
-        const val = localStorage.getItem(key);
-        if (!val) return false;
-        try {
-          const parsed = JSON.parse(val);
-          if (!Array.isArray(parsed) && !(parsed && parsed.entries)) {
-            if (!Array.isArray(parsed)) {
-              alert('Formato do backup inválido. Restauração abortada.');
-              return false;
-            }
-          }
-          // confirmar
-          if (!confirm('Tem a certeza que quer restaurar este backup? Os dados atuais serão substituídos.')) return false;
-          // aplicar
-          const payload = Array.isArray(parsed) ? { entries: parsed } : parsed;
-          const res = sanitizeImportPayload(payload);
-          if (!res.ok) { alert('O backup contém entradas inválidas e não pode ser restaurado.'); return false; }
-          // criar backup atual antes de sobrescrever
-          backupLocalData();
-          state.entries = res.entries;
-          if (res.vs) state.vs = res.vs;
-          if (res.year) state.year = res.year;
-          saveEntries();
-          await fetchPrices(800);
-          if (state.chartMode === 'candles') await fetchOHLC(90);
-          renderAll();
-          alert('Backup restaurado com sucesso.');
-          return true;
-        } catch (err) {
-          console.error('Erro ao restaurar backup:', err);
-          alert('Erro ao restaurar backup. Veja a consola para mais detalhes.');
-          return false;
-        }
-      }
-
-      $('#importInput').addEventListener('change', async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        const text = await file.text();
-        try {
-          const parsed = JSON.parse(text);
-          const res = sanitizeImportPayload(parsed);
-          if (!res.ok) { alert(res.reason); e.target.value = ''; return; }
-
-          // Aviso sobre grande quantidade de entradas
-          if (res.entries.length > 5000) {
-            if (!confirm(`O ficheiro contém ${res.entries.length} entradas — isto é muito grande e pode afectar o navegador. Quer continuar?`)) { e.target.value = ''; return; }
-          }
-
-          let proceedMsg = `Foram encontradas ${res.entries.length} entradas válidas.`;
-          if (res.invalid && res.invalid.length) proceedMsg += ` ${res.invalid.length} entradas inválidas serão ignoradas.`;
-          proceedMsg += '\nQuer substituir os seus dados locais por estas entradas válidas?';
-
-          if (!confirm(proceedMsg)) { e.target.value = ''; return; }
-
-          // Backup antes de sobrescrever
-          backupLocalData();
-
-          // Aplicar alterações
-          state.entries = res.entries;
-          state.vs = res.vs;
-          state.year = res.year;
-          try { $('#vsCurrency').value = state.vs; } catch (err) {}
-          try { $('#yearSelect').value = state.year; } catch (err) {}
-          saveEntries();
-          await fetchPrices(800);
-          if (state.chartMode === 'candles') await fetchOHLC(90);
-          renderAll();
-          alert(`Import concluído: ${res.entries.length} entradas importadas com sucesso.`);
-        } catch (err) {
-          console.error('Erro ao importar JSON:', err);
-          alert('Ocorreu um erro ao processar o ficheiro. Verifique se é um JSON válido e se o formato corresponde ao esperado.');
-        }
-        e.target.value = '';
-      });
-
-      // Restore backups buttons
-      $('#restoreLastBackupBtn').addEventListener('click', async () => {
-        const keys = listBackups();
-        if (!keys.length) { alert('Nenhum backup local encontrado.'); return; }
-        const last = keys[0];
-        if (confirm('Restaurar o último backup local? Esta ação substituirá os seus dados atuais.')) {
-          await restoreBackup(last);
-        }
-      });
-
-      $('#chooseBackupBtn').addEventListener('click', async () => {
-        const keys = listBackups();
-        if (!keys.length) { alert('Nenhum backup local encontrado.'); return; }
-        // Mostrar menu simples: lista com índices
-        const menu = keys.map((k, i) => `${i + 1}. ${k}`).join('\n');
-        const choice = prompt(`Backups locais:\n${menu}\n\nDigite o número do backup a restaurar:`);
-        if (!choice) return;
-        const idx = parseInt(choice, 10) - 1;
-        if (isNaN(idx) || idx < 0 || idx >= keys.length) { alert('Seleção inválida.'); return; }
-        await restoreBackup(keys[idx]);
-      });
-
-      // NOVO: Eventos do Modal de Edição
-      $('.close-button').addEventListener('click', () => {
-        $('#editModal').style.display = 'none';
-        state.editingEntryId = null;
-      });
-      $('#saveEditBtn').addEventListener('click', () => {
-        if (!state.editingEntryId) return;
-        const idx = state.entries.findIndex(e => e.id === state.editingEntryId);
-        if (idx < 0) return;
-
-        const newDate = $('#editDateInput').value;
-        const newPrice = parseFloat($('#editPriceInput').value);
-        const newFiat = parseFloat($('#editFiatInput').value);
-        const newFee = parseFloat($('#editFeeInput').value) || 0;
-        const newWeight = parseFloat($('#editWeightInput').value) || null;
-
-        if (!newDate || !isFinite(newPrice) || !isFinite(newFiat) || newPrice <= 0) {
-          alert('Preencha, no mínimo, a data, o preço do BTC (maior que zero) e o valor do aporte.'); return;
-        }
-
-        state.entries[idx].date = newDate;
-        state.entries[idx].price = newPrice;
-        state.entries[idx].fiat = newFiat;
-        state.entries[idx].fee = newFee;
-        state.entries[idx].sats = satsFrom(newFiat, newPrice); // Recalcula sats
-        state.entries[idx].weight = newWeight;
-
-        saveEntries();
-        renderAll();
-        $('#editModal').style.display = 'none';
-        state.editingEntryId = null;
-      });
-      // Fechar modal ao clicar fora dele
-      window.addEventListener('click', (event) => {
-        if (event.target == $('#editModal')) {
-          $('#editModal').style.display = 'none';
-          state.editingEntryId = null;
-        }
-      });
-      // Eventos de produtividade
-      $('#startChallengeBtn').addEventListener('click', () => { startChallenge(); alert('Desafio iniciado. Boa sorte!'); });
-      $('#stopChallengeBtn').addEventListener('click', () => { if (confirm('Parar o desafio? O progresso atual será mantido nos registos.')) { stopChallenge(); } });
-    }
-
-    function recalcSats() {
-      const fiat = parseFloat($('#fiatInput').value);
-      const price = parseFloat($('#priceInput').value);
-      if (isFinite(fiat) && isFinite(price) && price > 0) {
-        const sats = satsFrom(fiat, price);
-        $('#satsOutput').value = new Intl.NumberFormat('pt-PT').format(sats);
-        $('#avgOutput').value = fmt(price);
-      } else {
-        $('#satsOutput').value = '';
-        $('#avgOutput').value = '';
-      }
-    }
-
-    // Boot
-    async function boot() {
-      Chart.register(ChartjsPluginAnnotation);
-
-      hydrateYearOptions();
-      bindEvents();
-      $('#vsCurrency').value = state.vs;
-      $('#dateInput').valueAsDate = new Date();
-      
-      await fetchPrices(800);
-      if (state.chartMode === 'candles') await fetchOHLC(90);
-      renderAll();
-    }
-
-    boot();
-
+// atualizar gráfico quando controles mudarem
+document.addEventListener('change', async (e) => {
+  if (e.target && e.target.id === 'vsCurrency') {
+    await fetchPrices(90);
+    if (document.getElementById('chartMode')?.value === 'candles') await fetchOHLC(90);
+    renderChart();
+  }
+  if (e.target && e.target.id === 'chartMode') {
+    if (e.target.value === 'candles') await fetchOHLC(90);
+    renderChart();
+  }
 });
 
