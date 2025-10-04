@@ -1,0 +1,12 @@
+{
+  "name": "btc-journal-structured",
+  "version": "1.0.0",
+  "description": "BTC Journal - structured workspace for tests",
+  "type": "module",
+  "scripts": {
+    "test": "jest --coverage"
+  },
+  "devDependencies": {
+    "jest": "^29.0.0"
+  }
+}
