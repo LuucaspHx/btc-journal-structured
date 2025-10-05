@@ -48,488 +48,88 @@
     </div>
   </div>
 
-  <header>
-    <div class="title"><span class="dot"></span> BTC Journal</div>
-    <div class="controls">
-      <label class="muted">Moeda</label>
-      <select id="vsCurrency">
-        <option value="eur">EUR</option> <option value="usd">USD</option> <option value="brl">BRL</option>
-      </select>
-        <label class="muted">Visão</label>
-        <select id="chartMode">
-          <option value="line">Linha</option>
-          <option value="candles">Velas (candlestick)</option>
-        </select>
-      <label class="muted">Ano</label>
-      <select id="yearSelect"></select>
-      <button id="resetBtn" class="ghost">Limpar dados (local)</button>
-    </div>
+  <header class="site-header">
+    <h1>BTC Journal •</h1>
+    <nav>
+      <button id="btn-export">Exportar JSON</button>
+      <label class="btn" for="file-import">Importar JSON</label>
+      <input id="file-import" type="file" accept="application/json" hidden />
+    </nav>
   </header>
 
-  <div class="wrap">
-    <aside class="sidebar">
-      <div class="card stack">
-        <div style="display:flex; align-items:center; justify-content:space-between;">
-          <div>
-            <div style="font-weight:800;">Novo aporte</div>
-            <div class="note">Guarda localmente no seu navegador</div>
-          </div>
-          <button id="fetchPriceBtn" class="ghost" title="Pegar preço do dia pelo CoinGecko">Buscar preço do dia</button>
-        </div>
-        <div class="row">
-          <div class="stack"> <label class="muted">Data</label> <input id="dateInput" type="date" /> </div>
-          <div class="stack"> <label class="muted">Preço BTC (na moeda)</label> <input id="priceInput" type="number" step="0.01" placeholder="ex: 62,500" /> </div>
-        </div>
-        <div class="row">
-          <div class="stack"> <label class="muted">Valor do aporte (fiat)</label> <input id="fiatInput" type="number" step="0.01" placeholder="ex: 350" /> </div>
-          <div class="stack"> <label class="muted">Taxas (opcional)</label> <input id="feeInput" type="number" step="0.01" placeholder="ex: 1.50" /> </div>
-        </div>
-        <div class="row3">
-          <div class="stack"> <label class="muted">Sats (auto)</label> <input id="satsOutput" type="text" readonly /> </div>
-          <div class="stack"> <label class="muted">Preço médio (auto)</label> <input id="avgOutput" type="text" readonly /> </div>
-          <div class="stack"> <label class="muted">% carteira (manual)</label> <input id="weightInput" type="number" step="0.01" placeholder="ex: 0.80" /> </div>
-        </div>
-        <button id="addBtn" class="primary">Adicionar aporte</button>
-        <div class="note">Dica: preencha a data → clique em “Buscar preço do dia” → informe o valor do aporte → revise os sats calculados → “Adicionar”.</div>
+  <!-- Container para mensagens/banners (erro, aviso, migração) -->
+  <div id="messageContainer" class="message-container" aria-live="polite"></div>
+
+  <!-- Modal de confirmação customizado -->
+  <div id="confirmModal" class="confirm-modal" role="dialog" aria-modal="true" style="display:none;">
+    <div class="confirm-modal-content">
+      <div id="confirmModalMessage" class="confirm-modal-message"></div>
+      <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:12px;">
+        <button id="confirmCancelBtn" class="ghost">Cancelar</button>
+        <button id="confirmOkBtn" class="primary">Confirmar</button>
       </div>
-      <div class="card stack">
-        <div style="font-weight:800;">Resumo</div>
-        <div class="kpiBar">
-          <div class="kpi"> <div class="label">Preço atual BTC</div> <div id="kpiPrice" class="value">—</div> <div id="kpiUpdated" class="note">Atualizando…</div> </div>
-          <div class="kpi"> <div class="label">Aportes ativos</div> <div id="kpiOpen" class="value">0</div> <div class="note">Entradas não finalizadas</div> </div>
-          <div class="kpi"> <div class="label">P/L somado</div> <div id="kpiPL" class="value">—</div> <div class="note">Na moeda selecionada</div> </div>
-          <div class="kpi"> <div class="label">PM médio</div> <div id="kpiPM" class="value">—</div> <div class="note">Preço médio ponderado dos abertos</div> </div>
-          <!-- NOVO KPI: Total Investido -->
-          <div class="kpi"> <div class="label">Total Investido</div> <div id="kpiTotalInvested" class="value">—</div> <div class="note">Em aportes abertos</div> </div>
-          <!-- NOVO KPI: Valor Atual da Carteira -->
-          <div class="kpi"> <div class="label">Valor Atual</div> <div id="kpiCurrentValue" class="value">—</div> <div class="note">Em aportes abertos</div> </div>
-          <!-- NOVO KPI: Retorno Percentual Total -->
-          <div class="kpi"> <div class="label">Retorno Total (%)</div> <div id="kpiTotalReturnPct" class="value">—</div> <div class="note">Sobre aportes abertos</div> </div>
-        </div>
-      </div>
-      <div class="card stack">
-        <div style="font-weight:800;">Exportar / Importar</div>
-        <div class="row">
-          <button id="exportBtn" class="ghost">Exportar JSON</button>
-          <label class="ghost" style="display:flex; align-items:center; justify-content:center; cursor:pointer;">Importar JSON<input id="importInput" type="file" accept="application/json" hidden /></label>
-        </div>
-        <div class="note">Backup simples dos seus dados locais.</div>
-      </div>
-        <div class="card stack">
-          <div style="font-weight:800;">Backups locais</div>
-          <div class="row">
-            <button id="restoreLastBackupBtn" class="ghost">Restaurar último backup</button>
-            <button id="chooseBackupBtn" class="ghost">Escolher backup...</button>
-          </div>
-          <div class="note">O app cria backups locais automaticamente antes de operações destrutivas (import/restore).</div>
-        </div>
-        <!-- NOVO: Cartão de Produtividade -->
-        <div class="card stack">
-          <div style="font-weight:800;">Produtividade</div>
-          <div id="productivityCard">
-            <div class="note">Métricas sobre a regularidade dos seus aportes.</div>
-            <div style="display:flex; gap:8px; margin-top:8px; flex-wrap:wrap;">
-              <div style="flex:1; min-width:140px;"><div class="muted">Meses com aporte</div><div id="prodMonths" class="value">—</div></div>
-              <div style="flex:1; min-width:140px;"><div class="muted">Média /mês</div><div id="prodAvg" class="value">—</div></div>
-              <div style="flex:1; min-width:140px;"><div class="muted">Streak atual</div><div id="prodStreak" class="value">—</div></div>
-            </div>
-            <div style="margin-top:10px;">
-              <div class="muted">Desafio: 1 aporte / mês</div>
-              <div style="display:flex; align-items:center; gap:8px; margin-top:6px;">
-                <progress id="prodProgress" value="0" max="12" style="flex:1;"></progress>
-                <div id="prodProgressLabel" class="muted">0/12</div>
-              </div>
-              <div style="display:flex; gap:8px; margin-top:8px;">
-                <button id="startChallengeBtn" class="ghost">Iniciar desafio</button>
-                <button id="stopChallengeBtn" class="ghost">Parar desafio</button>
-              </div>
-            </div>
-          </div>
-        </div>
-    </aside>
-    <main style="display:grid; gap: 12px; align-content:start;">
-      <div class="card">
-        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
-          <div style="font-weight:800;">Gráfico BTC e marcadores de aportes</div>
-          <div class="note">Linha de preço (CoinGecko) + pontos nas datas dos seus aportes</div>
-        </div>
-        <canvas id="btcChart" height="140"></canvas>
-      </div>
-      <div class="card">
-        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px;">
-          <div style="font-weight:800;">Aportes por mês</div>
-          <div class="note">Máx. 12 caixas (um por mês do ano selecionado)</div>
-        </div>
-        <div id="monthsGrid" class="grid12"></div>
-      </div>
-    </main>
+    </div>
   </div>
 
-<script type="module" src="js/app.js"></script>
-      for (const e of entries.filter(x => !x.closed)) {
-        const btc = e.sats / 1e8;
-        custoTot += (e.fiat + (e.fee || 0));
-        btcTot += btc;
-      }
-      if (btcTot === 0) return 0;
-      return custoTot / btcTot;
-    }
+  <!-- Controles do gráfico -->
+  <div class="chart-controls" style="display:flex;gap:10px;align-items:center;padding:12px 16px;">
+    <label class="muted">Moeda</label>
+    <select id="vsCurrency">
+      <option value="eur">EUR</option>
+      <option value="usd">USD</option>
+      <option value="brl">BRL</option>
+    </select>
+    <label class="muted">Visão</label>
+    <select id="chartMode">
+      <option value="line">Linha</option>
+      <option value="candles">Velas (candlestick)</option>
+    </select>
+  </div>
 
-    // NOVO: Função para calcular o total investido em aportes abertos
-    function totalInvested(entries) {
-      return entries.filter(e => !e.closed).reduce((sum, e) => sum + (e.fiat + (e.fee || 0)), 0);
-    }
+  <div class="wrap">
+  <main class="container">
+    <section class="panel">
+      <h2>Transações (sats-first)</h2>
+      <div id="stats" class="stats"></div>
+      <table id="tx-table" class="table">
+        <thead>
+          <tr>
+            <th>Data</th>
+            <th>Quantidade (sats)</th>
+            <th>Preço (BRL)</th>
+            <th>TXID / Nota</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="tx-body"></tbody>
+      </table>
 
-    // NOVO: Função para calcular o valor atual da carteira (aportes abertos)
-    function currentPortfolioValue(entries, currentPrice) {
-      return entries.filter(e => !e.closed).reduce((sum, e) => sum + (e.sats / 1e8 * currentPrice), 0);
-    }
+      <form id="tx-form" class="form">
+        <input id="tx-date" type="date" required />
+        <input id="tx-sats" type="number" min="1" step="1" placeholder="satoshis" required />
+        <input id="tx-price" type="number" min="0" step="0.01" placeholder="preço BRL" required />
+        <input id="tx-note" type="text" placeholder="txid ou nota" />
+        <button type="submit">Adicionar</button>
+      </form>
+    </section>
+    <section id="chartSection" class="panel card sector chart">
+      <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+        <h2 style="margin:0;">Gráfico BTC</h2>
+        <button id="chartExpandBtn" class="btn ghost" aria-expanded="false">Expandir</button>
+      </div>
+      <div class="chart-body">
+        <canvas id="btcChart"></canvas>
+      </div>
+      <!-- Legenda do gráfico (cores de aportes) -->
+      <div id="chartLegend" class="chart-legend" aria-hidden="false"></div>
+    </section>
+  </main>
 
-    // NOVO: Função para calcular o retorno percentual total
-    function totalReturnPercentage(entries, currentPrice) {
-      const invested = totalInvested(entries);
-      const currentValue = currentPortfolioValue(entries, currentPrice);
-      if (invested === 0) return 0;
-      return ((currentValue - invested) / invested) * 100;
-    }
+  <!-- IMPORTANTE: type="module" evita imprimir JS como texto -->
+  <script type="module" src="./js/app.js"></script>
 
-    // =====================
-    // Preços (CoinGecko)
-    // =====================
-    async function fetchPrices(days = 400) {
-      setLoading(true);
-      try {
-        const vs = state.vs;
-        const url = `https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=${vs}&days=${days}`;
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`API do CoinGecko falhou: ${res.statusText}`);
-        const data = await res.json();
-        state.prices = (data.prices || []).map(([t, p]) => ({ t, p }));
-      } catch (error) {
-        console.error("Erro ao buscar preços:", error);
-        alert("Não foi possível carregar os dados de preços. Por favor, verifique a sua conexão e tente novamente.");
-      } finally {
-        setLoading(false);
-      }
-    }
-
-      // Novo: Buscar OHLC (CoinGecko fornece endpoint /ohlc)
-      async function fetchOHLC(days = 90) {
-        setLoading(true);
-        try {
-          const vs = state.vs;
-          const url = `https://api.coingecko.com/api/v3/coins/bitcoin/ohlc?vs_currency=${vs}&days=${days}`;
-          const res = await fetch(url);
-          if (!res.ok) throw new Error(`CoinGecko OHLC falhou: ${res.statusText}`);
-          const data = await res.json();
-          // data: array de [timestamp, open, high, low, close]
-          state.ohlc = (data || []).map(d => ({ t: d[0], o: d[1], h: d[2], l: d[3], c: d[4] }));
-        } catch (err) {
-          console.warn('Não foi possível carregar OHLC:', err);
-          state.ohlc = [];
-        } finally {
-          setLoading(false);
-        }
-      }
-
-    async function fetchHistoricalPriceForDate(dateStr) {
-      const ts = new Date(dateStr + 'T12:00:00').getTime();
-      if (!state.prices.length) await fetchPrices(2000);
-      let best = null, bestDiff = Infinity;
-      for (const pt of state.prices) {
-        const d = Math.abs(pt.t - ts);
-        if (d < bestDiff) { bestDiff = d; best = pt; }
-      }
-      return best ? best.p : null;
-    }
-
-    function currentPrice() {
-      if (!state.prices.length) return 0;
-      return state.prices[state.prices.length - 1].p;
-    }
-
-    // =====================
-    // Renders
-    // =====================
-    function renderAll() {
-        renderKPI();
-        renderMonths();
-        renderChart();
-    }
-
-    // =====================
-    // UI wiring
-    // =====================
-    // Chart mode select
-    const chartModeSelect = $('#chartMode');
-    chartModeSelect.value = state.chartMode;
-    chartModeSelect.addEventListener('change', async (e) => {
-      state.chartMode = e.target.value;
-      try { localStorage.setItem('btcJournalChartMode', state.chartMode); } catch (err) { /* no-op */ }
-      if (state.chartMode === 'candles') {
-        // obter OHLC (90 dias por padrão) e re-render
-        await fetchOHLC(90);
-      }
-      renderChart();
-    });
-
-    // vsCurrency change should refresh prices and ohlc
-    $('#vsCurrency').addEventListener('change', async (e) => {
-      state.vs = e.target.value;
-      await fetchPrices(400);
-      if (state.chartMode === 'candles') await fetchOHLC(90);
-      renderAll();
-    });
-
-    function renderChart() {
-      const ctx = document.getElementById('btcChart').getContext('2d');
-      const labels = state.prices.map(pt => pt.t);
-      const priceData = state.prices.map(pt => pt.p);
-      const points = state.entries.filter(e => !e.closed).map(e => ({ x: new Date(e.date).getTime(), y: e.price }));
-      
-      const averagePrice = pmMedio(state.entries);
-
-        // Monta datasets dinamicamente: linha de preço sempre disponível; candles opcionais
-        const datasets = [];
-
-        // Candles (quando disponíveis e modo selecionado)
-        if (state.ohlc && state.ohlc.length > 0 && (state.chartMode === 'candles' || state.chartMode === undefined)) {
-          // Mapear para o formato do plugin: {x: timestamp, o, h, l, c}
-          const candData = state.ohlc.map(d => ({ x: d.t, o: d.o, h: d.h, l: d.l, c: d.c }));
-          datasets.push({
-            label: 'OHLC',
-            type: 'candlestick',
-            data: candData,
-            fractionalDigitsCount: 2,
-            borderColor: ctx && ctx.canvas ? undefined : undefined,
-            // colorização por vela: verde para alta, vermelho para baixa
-            color: { up: 'rgba(34,197,94,0.95)', down: 'rgba(239,68,68,0.95)' }
-          });
-        }
-
-        // Linha de preço histórico (manteve-se)
-        datasets.push({ label: `BTC/${state.vs.toUpperCase()}`, data: priceData, parsing: false, borderWidth: 1.8, tension: 0.15, borderColor: 'var(--brand)', type: 'line' });
-
-        // Scatter de aportes (sempre acima)
-        datasets.push({ type: 'scatter', label: 'Aportes (abertos)', data: points, pointRadius: 4, pointHoverRadius: 6, backgroundColor: 'var(--green)', order: 10 });
-
-        const data = { labels, datasets };
-
-      const cfg = {
-        type: 'line',
-        data,
-        options: {
-          animation: false,
-          responsive: true,
-          maintainAspectRatio: false,
-          scales: {
-            x: { type: 'time', time: { unit: 'month' }, grid: { color: '#1e2432' } },
-            y: { grid: { color: '#1e2432' } }
-          },
-          plugins: {
-            legend: { labels: { color: '#cbd5e1' } },
-            tooltip: { mode: 'nearest', intersect: false },
-            annotation: {
-              annotations: {
-                line1: {
-                  type: 'line',
-                  yMin: averagePrice,
-                  yMax: averagePrice,
-                  borderColor: 'var(--muted)',
-                  borderWidth: 1.5,
-                  borderDash: [6, 6],
-                  display: averagePrice > 0, // Só mostra a linha se houver um PM > 0
-                  label: {
-                    content: `PM: ${fmt(averagePrice)}`,
-                    position: 'end',
-                    backgroundColor: 'rgba(138, 148, 166, 0.2)',
-                    color: 'var(--muted)',
-                    font: { size: 10 },
-                    padding: { x: 4, y: 2 },
-                    borderRadius: 4,
-                    yAdjust: -10,
-                  }
-                }
-              }
-            }
-          }
-        }
-      };
-
-      if (state.chart) { state.chart.destroy(); }
-      state.chart = new Chart(ctx, cfg);
-    }
-
-    function renderMonths() {
-      const grid = $('#monthsGrid');
-      grid.innerHTML = '';
-      const price = currentPrice();
-      for (let m = 0; m < 12; m++) {
-        const box = document.createElement('div');
-        box.className = 'monthBox';
-        const monthEntries = state.entries
-          .filter(e => !e.deleted && new Date(e.date).getFullYear() === state.year && new Date(e.date).getMonth() === m)
-          .sort((a, b) => new Date(a.date) - new Date(b.date));
-        
-        const head = document.createElement('div');
-        head.className = 'monthHead';
-        head.innerHTML = `<span>${monthsShort[m]} ${state.year}</span><span class="muted">${monthEntries.length} aporte(s)</span>`;
-        box.appendChild(head);
-
-        if (monthEntries.length === 0) {
-          const empty = document.createElement('div'); empty.className = 'note';
-          empty.textContent = 'Sem entradas';
-          box.appendChild(empty);
-        } else {
-          for (const e of monthEntries) {
-            const { pl, pct } = plFor(e, price);
-            const cls = e.closed ? 'flat' : (pl > 0 ? 'up' : (pl < 0 ? 'down' : 'flat'));
-            const div = document.createElement('div');
-            div.className = 'entry';
-            const dateNice = new Date(e.date).toLocaleDateString('pt-PT');
-            div.innerHTML = `
-              <div class="tags">
-                <span class="tag">${dateNice}</span>
-                <span class="tag">${fmt(e.fiat)} ${state.vs.toUpperCase()}</span>
-                <span class="tag">PM: ${fmt(e.price)}</span>
-                ${e.closed ? '<span class="tag">Fechado</span>' : ''}
-              </div>
-              <div style="display:flex; align-items:center; gap:8px;">
-                <span class="pl ${cls}">${pl >= 0 ? '+' : ''}${fmt(pl)} (${fmt(pct, 1)}%)</span>
-                <button class="ghost" data-act="toggle" data-id="${e.id}">${e.closed ? 'Reabrir' : 'Fechar'}</button>
-                <button class="ghost" data-act="edit" data-id="${e.id}">Editar</button> <!-- NOVO: Botão Editar -->
-                <button class="ghost" data-act="del" data-id="${e.id}">Apagar</button>
-              </div>`;
-            box.appendChild(div);
-          }
-        }
-        grid.appendChild(box);
-      }
-    }
-
-    function renderKPI() {
-      const price = currentPrice();
-      const openEntries = state.entries.filter(e => !e.closed);
-
-      $('#kpiPrice').textContent = `${fmt(price)} ${state.vs.toUpperCase()}`;
-      $('#kpiUpdated').textContent = price > 0 ? `Atualizado: ${new Date().toLocaleString('pt-PT')}` : 'A aguardar dados...';
-      $('#kpiOpen').textContent = openEntries.length;
-
-      let plSum = 0;
-      for (const e of openEntries) {
-        plSum += plFor(e, price).pl;
-      }
-      $('#kpiPL').textContent = `${plSum >= 0 ? '+' : ''}${fmt(plSum)} ${state.vs.toUpperCase()}`;
-      
-      const pm = pmMedio(state.entries);
-      $('#kpiPM').textContent = pm > 0 ? `${fmt(pm)} ${state.vs.toUpperCase()}` : '—';
-
-      // NOVO: Renderizar KPIs adicionais
-      const totalInv = totalInvested(state.entries);
-      $('#kpiTotalInvested').textContent = `${fmt(totalInv)} ${state.vs.toUpperCase()}`;
-
-      const currentVal = currentPortfolioValue(state.entries, price);
-      $('#kpiCurrentValue').textContent = `${fmt(currentVal)} ${state.vs.toUpperCase()}`;
-
-      const totalReturnPct = totalReturnPercentage(state.entries, price);
-      const totalReturnCls = totalReturnPct > 0 ? 'up' : (totalReturnPct < 0 ? 'down' : 'flat');
-      $('#kpiTotalReturnPct').textContent = `${totalReturnPct >= 0 ? '+' : ''}${fmt(totalReturnPct, 2)}%`;
-      $('#kpiTotalReturnPct').className = `value pl ${totalReturnCls}`;
-    }
-
-    // =====================
-    // Interações
-    // =====================
-    function hydrateYearOptions() {
-      const sel = $('#yearSelect');
-      const cur = new Date().getFullYear();
-      const years = [cur - 2, cur - 1, cur, cur + 1];
-      sel.innerHTML = years.map(y => `<option value="${y}" ${y === state.year ? 'selected' : ''}>${y}</option>`).join('');
-    }
-
-    function bindEvents() {
-      $('#vsCurrency').addEventListener('change', async (e) => {
-        state.vs = e.target.value;
-        await fetchPrices(800);
-        renderAll();
-      });
-      $('#yearSelect').addEventListener('change', (e) => {
-        state.year = parseInt(e.target.value, 10);
-        renderMonths();
-      });
-      $('#resetBtn').addEventListener('click', () => {
-        if (confirm('Tem a certeza que quer apagar todos os aportes salvos localmente? Esta ação é irreversível.')) {
-          state.entries = [];
-          saveEntries();
-          renderAll();
-        }
-      });
-      $('#fetchPriceBtn').addEventListener('click', async () => {
-        const dateStr = $('#dateInput').value;
-        if (!dateStr) { alert('Por favor, escolha uma data primeiro.'); return; }
-        const p = await fetchHistoricalPriceForDate(dateStr);
-        if (p) { $('#priceInput').value = Number(p).toFixed(2); recalcSats(); }
-        else alert('Não foi possível obter o preço para essa data.');
-      });
-      $('#fiatInput').addEventListener('input', recalcSats);
-      $('#priceInput').addEventListener('input', recalcSats);
-      $('#addBtn').addEventListener('click', () => {
-        const dateStr = $('#dateInput').value;
-        const price = parseFloat($('#priceInput').value);
-        const fiat = parseFloat($('#fiatInput').value);
-        const fee = parseFloat($('#feeInput').value) || 0;
-        if (!dateStr || !isFinite(price) || !isFinite(fiat) || price <= 0) {
-          alert('Preencha, no mínimo, a data, o preço do BTC (maior que zero) e o valor do aporte.'); return;
-        }
-        const sats = satsFrom(fiat, price);
-        const entry = { id: uid(), date: dateStr, price, fiat, fee, sats, closed: false, weight: parseFloat($('#weightInput').value) || null };
-        state.entries.push(entry);
-        saveEntries();
-        renderAll();
-        $('#fiatInput').value = '';
-        $('#feeInput').value = '';
-        $('#satsOutput').value = '';
-        $('#weightInput').value = '';
-      });
-      $('#monthsGrid').addEventListener('click', (e) => {
-        const btn = e.target.closest('button[data-id]');
-        if (!btn) return;
-        const id = btn.dataset.id;
-        const act = btn.dataset.act;
-        const idx = state.entries.findIndex(x => x.id === id);
-        if (idx < 0) return;
-
-        if (act === 'toggle') {
-          state.entries[idx].closed = !state.entries[idx].closed;
-        } else if (act === 'del') {
-          if (confirm('Tem a certeza que quer apagar este aporte?')) {
-            state.entries.splice(idx, 1);
-          }
-        } else if (act === 'edit') { // NOVO: Lógica para o botão Editar
-          state.editingEntryId = id;
-          const entryToEdit = state.entries[idx];
-          $('#editDateInput').value = entryToEdit.date;
-          $('#editPriceInput').value = entryToEdit.price;
-          $('#editFiatInput').value = entryToEdit.fiat;
-          $('#editFeeInput').value = entryToEdit.fee;
-          $('#editWeightInput').value = entryToEdit.weight;
-          $('#editModal').style.display = 'flex'; // Mostrar o modal
-        }
-        saveEntries();
-        renderAll();
-      });
-      $('#exportBtn').addEventListener('click', () => {
-        const dataStr = JSON.stringify({ vs: state.vs, year: state.year, entries: state.entries }, null, 2);
-        const blob = new Blob([dataStr], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `btc-journal-backup-${new Date().toISOString().slice(0,10)}.json`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-      });
+</body>
+</html>
       // REGION: Import Validation + Backup (delegated to shared module)
       function backupLocalData() {
         try {
@@ -561,16 +161,18 @@
             // tentar detectar formato antigo: se for object with entries, ok; if array assume entries
             // se formato inválido, abort
             if (!Array.isArray(parsed)) {
-              alert('Formato do backup inválido. Restauração abortada.');
+              window.showMessage?.('Formato do backup inválido. Restauração abortada.', 'error') ?? alert('Formato do backup inválido. Restauração abortada.');
               return false;
             }
           }
-          // confirmar
-          if (!confirm('Tem a certeza que quer restaurar este backup? Os dados atuais serão substituídos.')) return false;
+          // confirmar via modal customizado
+          // usa window.confirmModalAsync que retorna Promise<boolean>
+          const _shouldRestore = await window.confirmModalAsync('Tem a certeza que quer restaurar este backup? Os dados atuais serão substituídos.');
+          if (!_shouldRestore) return false;
           // aplicar
           const payload = Array.isArray(parsed) ? { entries: parsed } : parsed;
           const res = sanitizeImportPayload(payload);
-          if (!res.ok) { alert('O backup contém entradas inválidas e não pode ser restaurado.'); return false; }
+          if (!res.ok) { window.showMessage?.('O backup contém entradas inválidas e não pode ser restaurado.', 'error'); return false; }
           // criar backup atual antes de sobrescrever
           backupLocalData();
           state.entries = res.entries;
@@ -580,11 +182,11 @@
           await fetchPrices(800);
           if (state.chartMode === 'candles') await fetchOHLC(90);
           renderAll();
-          alert('Backup restaurado com sucesso.');
+          window.showMessage?.('Backup restaurado com sucesso.', 'success');
           return true;
         } catch (err) {
           console.error('Erro ao restaurar backup:', err);
-          alert('Erro ao restaurar backup. Veja a consola para mais detalhes.');
+          window.showMessage?.('Erro ao restaurar backup. Veja a consola para mais detalhes.', 'error');
           return false;
         }
       }
@@ -595,19 +197,21 @@
         const text = await file.text();
         try {
           const parsed = JSON.parse(text);
-          const res = sanitizeImportPayload(parsed);
-          if (!res.ok) { alert(res.reason); e.target.value = ''; return; }
+      const res = sanitizeImportPayload(parsed);
+      if (!res.ok) { window.showMessage?.(res.reason || 'Arquivo inválido', 'error'); e.target.value = ''; return; }
 
           // Aviso sobre grande quantidade de entradas
           if (res.entries.length > 5000) {
-            if (!confirm(`O ficheiro contém ${res.entries.length} entradas — isto é muito grande e pode afectar o navegador. Quer continuar?`)) { e.target.value = ''; return; }
+            const okBig = await window.confirmModalAsync(`O ficheiro contém ${res.entries.length} entradas — isto é muito grande e pode afectar o navegador. Quer continuar?`);
+            if (!okBig) { e.target.value = ''; return; }
           }
 
           let proceedMsg = `Foram encontradas ${res.entries.length} entradas válidas.`;
           if (res.invalid && res.invalid.length) proceedMsg += ` ${res.invalid.length} entradas inválidas serão ignoradas.`;
           proceedMsg += '\nQuer substituir os seus dados locais por estas entradas válidas?';
 
-          if (!confirm(proceedMsg)) { e.target.value = ''; return; }
+          const okProceed = await window.confirmModalAsync(proceedMsg);
+          if (!okProceed) { e.target.value = ''; return; }
 
           // Backup antes de sobrescrever
           backupLocalData();
@@ -622,10 +226,10 @@
           await fetchPrices(800);
           if (state.chartMode === 'candles') await fetchOHLC(90);
           renderAll();
-          alert(`Import concluído: ${res.entries.length} entradas importadas com sucesso.`);
+          window.showMessage?.(`Import concluído: ${res.entries.length} entradas importadas com sucesso.`, 'success');
         } catch (err) {
           console.error('Erro ao importar JSON:', err);
-          alert('Ocorreu um erro ao processar o ficheiro. Verifique se é um JSON válido e se o formato corresponde ao esperado.');
+          window.showMessage?.('Ocorreu um erro ao processar o ficheiro. Verifique se é um JSON válido e se o formato corresponde ao esperado.', 'error');
         }
         e.target.value = '';
       });
@@ -633,22 +237,21 @@
       // Restore backups buttons
       $('#restoreLastBackupBtn').addEventListener('click', async () => {
         const keys = listBackups();
-        if (!keys.length) { alert('Nenhum backup local encontrado.'); return; }
+  if (!keys.length) { window.showMessage?.('Nenhum backup local encontrado.', 'warn'); return; }
         const last = keys[0];
-        if (confirm('Restaurar o último backup local? Esta ação substituirá os seus dados atuais.')) {
-          await restoreBackup(last);
-        }
+        const okLast = await window.confirmModalAsync('Restaurar o último backup local? Esta ação substituirá os seus dados atuais.');
+        if (okLast) { await restoreBackup(last); }
       });
 
       $('#chooseBackupBtn').addEventListener('click', async () => {
         const keys = listBackups();
-        if (!keys.length) { alert('Nenhum backup local encontrado.'); return; }
+  if (!keys.length) { window.showMessage?.('Nenhum backup local encontrado.', 'warn'); return; }
         // Mostrar menu simples: lista com índices
         const menu = keys.map((k, i) => `${i + 1}. ${k}`).join('\n');
         const choice = prompt(`Backups locais:\n${menu}\n\nDigite o número do backup a restaurar:`);
         if (!choice) return;
         const idx = parseInt(choice, 10) - 1;
-        if (isNaN(idx) || idx < 0 || idx >= keys.length) { alert('Seleção inválida.'); return; }
+  if (isNaN(idx) || idx < 0 || idx >= keys.length) { window.showMessage?.('Seleção inválida.', 'warn'); return; }
         await restoreBackup(keys[idx]);
       });
 
