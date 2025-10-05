@@ -49,7 +49,7 @@
   </div>
 
   <header class="site-header">
-    <h1>BTC Journal</h1>
+    <h1>BTC Journal •</h1>
     <nav>
       <button id="btn-export">Exportar JSON</button>
       <label class="btn" for="file-import">Importar JSON</label>
@@ -86,6 +86,7 @@
     </select>
   </div>
 
+  <div class="wrap">
   <main class="container">
     <section class="panel">
       <h2>Transações (sats-first)</h2>
@@ -111,10 +112,13 @@
         <button type="submit">Adicionar</button>
       </form>
     </section>
-    <section class="panel">
-      <h2>Gráfico BTC</h2>
-      <div style="height:360px; background: var(--panel); border-radius:12px; padding:8px; border:1px solid #1e2432;">
-        <canvas id="btcChart" width="800" height="320"></canvas>
+    <section id="chartSection" class="panel card sector chart">
+      <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+        <h2 style="margin:0;">Gráfico BTC</h2>
+        <button id="chartExpandBtn" class="btn ghost" aria-expanded="false">Expandir</button>
+      </div>
+      <div class="chart-body">
+        <canvas id="btcChart"></canvas>
       </div>
       <!-- Legenda do gráfico (cores de aportes) -->
       <div id="chartLegend" class="chart-legend" aria-hidden="false"></div>

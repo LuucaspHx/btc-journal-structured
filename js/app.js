@@ -242,6 +242,26 @@ function boot() {
   renderStats();
   // Inicializar chart com dados básicos
   try { renderChart(); } catch (e) { /* ignore if Chart not available yet */ }
+  
+    // Expandir / Recolher comportamento do gráfico (não altera IDs/funcs existentes)
+    const chartSection = document.getElementById('chartSection');
+    const chartExpandBtn = document.getElementById('chartExpandBtn');
+    if (chartSection && chartExpandBtn) {
+      chartExpandBtn.addEventListener('click', () => {
+        const expanded = chartSection.classList.toggle('expanded');
+        chartExpandBtn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        chartExpandBtn.textContent = expanded ? 'Recolher' : 'Expandir';
+        // se houver uma instância global do chart (renderChart cria uma), tente forçar resize
+        try {
+          if (window.btcChart && typeof window.btcChart.resize === 'function') {
+            // chamar em nextFrame para permitir que o CSS de layout termine
+            requestAnimationFrame(() => window.btcChart.resize());
+          }
+        } catch (err) {
+          console.warn('Falha ao redimensionar o gráfico após expandir/recolher', err);
+        }
+      });
+    }
 }
 
 document.addEventListener('DOMContentLoaded', boot);
@@ -382,6 +402,8 @@ function renderChart() {
 
   if (_chart) try { _chart.destroy(); } catch (e) {}
   _chart = new Chart(ctx, cfg);
+  // expor instância globalmente para permitir resize após toggle de layout
+  try { window.btcChart = _chart; } catch (e) { /* ignore in strict CSP env */ }
 
   // Atualizar legenda dinâmica
   updateLegend(points);
