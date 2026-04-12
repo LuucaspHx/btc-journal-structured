@@ -1,330 +1,471 @@
 
-<!DOCTYPE html>
+<!doctype html>
 <html lang="pt-BR">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>BTC Journal — v3 (Aprimorado)</title>
-  <!-- Chart.js + time adapter (date-fns) -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/date-fns@3.6.0/dist/date-fns.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0"></script>
-  <!-- Financial charts (candlestick / ohlc) for Chart.js -->
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@4.0.0/dist/chartjs-chart-financial.min.js"></script>
-  <!-- Plugin para anotações no gráfico (para a linha de preço médio) -->
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
-  <link rel="stylesheet" href="css/style.css" />
-</head>
-<body>
-  <!-- MELHORIA: Elemento para o overlay de loading -->
-  <div id="loadingOverlay" class="loading-overlay">A carregar dados de preços...</div>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BTC Journal — Esqueleto</title>
+    <!-- Chart.js + time adapter (date-fns) -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/date-fns@3.6.0/dist/date-fns.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@4.0.0/dist/chartjs-chart-financial.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+    <link rel="stylesheet" href="css/style.css" />
+  </head>
+  <body>
+    <div id="loadingOverlay" class="loading-overlay" aria-hidden="true">A carregar dados de preços...</div>
 
-  <!-- NOVO: Modal de Edição de Aporte -->
-  <div id="editModal" class="modal">
-    <div class="modal-content">
-      <span class="close-button">&times;</span>
-      <h2 style="margin-top:0;">Editar Aporte</h2>
-      <div class="stack">
-        <label class="muted">Data</label>
-        <input id="editDateInput" type="date" />
-      </div>
-      <div class="stack">
-        <label class="muted">Preço BTC (na moeda)</label>
-        <input id="editPriceInput" type="number" step="0.01" />
-      </div>
-      <div class="stack">
-        <label class="muted">Valor do aporte (fiat)</label>
-        <input id="editFiatInput" type="number" step="0.01" />
-      </div>
-      <div class="stack">
-        <label class="muted">Taxas (opcional)</label>
-        <input id="editFeeInput" type="number" step="0.01" />
-      </div>
-      <div class="stack">
-        <label class="muted">% carteira (manual)</label>
-        <input id="editWeightInput" type="number" step="0.01" />
-      </div>
-      <button id="saveEditBtn" class="primary">Guardar Alterações</button>
-    </div>
-  </div>
+    <header class="site-header">
+      <h1>BTC Journal</h1>
+      <nav>
+        <!-- export/import moved to footer -->
+      </nav>
+    </header>
 
-  <header class="site-header">
-    <h1>BTC Journal •</h1>
-    <nav>
-      <button id="btn-export">Exportar JSON</button>
-      <label class="btn" for="file-import">Importar JSON</label>
-      <input id="file-import" type="file" accept="application/json" hidden />
-    </nav>
-  </header>
-
-  <!-- Container para mensagens/banners (erro, aviso, migração) -->
-  <div id="messageContainer" class="message-container" aria-live="polite"></div>
-
-  <!-- Modal de confirmação customizado -->
-  <div id="confirmModal" class="confirm-modal" role="dialog" aria-modal="true" style="display:none;">
-    <div class="confirm-modal-content">
-      <div id="confirmModalMessage" class="confirm-modal-message"></div>
-      <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:12px;">
-        <button id="confirmCancelBtn" class="ghost">Cancelar</button>
-        <button id="confirmOkBtn" class="primary">Confirmar</button>
+    <div id="messageContainer" class="message-container" aria-live="polite"></div>
+    <div id="confirmModal" class="confirm-modal" role="dialog" aria-modal="true" style="display:none;">
+      <div class="confirm-modal-content">
+        <div id="confirmModalMessage" class="confirm-modal-message"></div>
+        <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:12px;">
+          <button id="confirmCancelBtn" class="ghost">Cancelar</button>
+          <button id="confirmOkBtn" class="primary">Confirmar</button>
+        </div>
       </div>
     </div>
-  </div>
-
-  <!-- Controles do gráfico -->
-  <div class="chart-controls" style="display:flex;gap:10px;align-items:center;padding:12px 16px;">
-    <label class="muted">Moeda</label>
-    <select id="vsCurrency">
-      <option value="eur">EUR</option>
-      <option value="usd">USD</option>
-      <option value="brl">BRL</option>
-    </select>
-    <label class="muted">Visão</label>
-    <select id="chartMode">
-      <option value="line">Linha</option>
-      <option value="candles">Velas (candlestick)</option>
-    </select>
-  </div>
-
-  <div class="wrap">
-  <main class="container">
-    <section class="panel">
-      <h2>Transações (sats-first)</h2>
-      <div id="stats" class="stats"></div>
-      <table id="tx-table" class="table">
-        <thead>
-          <tr>
-            <th>Data</th>
-            <th>Quantidade (sats)</th>
-            <th>Preço (BRL)</th>
-            <th>TXID / Nota</th>
-            <th></th>
-          </tr>
-        </thead>
-        <tbody id="tx-body"></tbody>
-      </table>
-
-      <form id="tx-form" class="form">
-        <input id="tx-date" type="date" required />
-        <input id="tx-sats" type="number" min="1" step="1" placeholder="satoshis" required />
-        <input id="tx-price" type="number" min="0" step="0.01" placeholder="preço BRL" required />
-        <input id="tx-note" type="text" placeholder="txid ou nota" />
-        <button type="submit">Adicionar</button>
-      </form>
-    </section>
-    <section id="chartSection" class="panel card sector chart">
-      <div class="card-header" style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
-        <h2 style="margin:0;">Gráfico BTC</h2>
-        <button id="chartExpandBtn" class="btn ghost" aria-expanded="false">Expandir</button>
+    <div id="exportModal" class="modal export-modal" role="dialog" aria-modal="true" style="display:none;">
+      <div class="modal-content export-modal-content">
+        <div class="export-modal-head">
+          <h2>Exportar JSON</h2>
+          <button id="exportCloseBtn" type="button" class="ghost">Fechar</button>
+        </div>
+        <p id="exportMeta" class="muted">Pré-visualização do backup local. Antes de importar, gere um JSON ou CSV e guarde em local seguro.</p>
+        <textarea id="exportPreview" readonly spellcheck="false"></textarea>
+        <div class="muted" style="font-size:12px; line-height:1.5;">
+          Dica: mantemos cópias locais antes de cada importação, mas recomendo baixar um backup manual periodicamente.
+        </div>
+        <div class="modal-actions">
+          <button id="exportCopyBtn" type="button" class="ghost">Copiar</button>
+          <button id="exportDownloadBtn" type="button" class="primary">Descarregar JSON</button>
+          <button id="exportCsvBtn" type="button" class="ghost">Descarregar CSV</button>
+        </div>
       </div>
-      <div class="chart-body">
-        <canvas id="btcChart"></canvas>
+    </div>
+    <div id="importModal" class="modal import-modal" role="dialog" aria-modal="true" style="display:none;">
+      <div class="modal-content import-modal-content">
+        <div class="import-modal-head">
+          <h2>Pré-visualizar importação</h2>
+          <button id="importCloseBtn" type="button" class="ghost">Fechar</button>
+        </div>
+        <div id="importSummary" class="muted" style="margin-bottom:8px;">Nenhum arquivo carregado.</div>
+        <div id="importPreviewList" class="import-preview" style="max-height:240px; overflow:auto;"></div>
+        <div id="importInvalidHint" class="note" style="margin-top:8px;"></div>
+        <div class="modal-actions" style="margin-top:12px;">
+          <button id="importCancelBtn" type="button" class="ghost">Cancelar</button>
+          <button id="importApplyBtn" type="button" class="primary">Aplicar</button>
+        </div>
       </div>
-      <!-- Legenda do gráfico (cores de aportes) -->
-      <div id="chartLegend" class="chart-legend" aria-hidden="false"></div>
-    </section>
-  </main>
+    </div>
 
-  <!-- IMPORTANTE: type="module" evita imprimir JS como texto -->
-  <script type="module" src="./js/app.js"></script>
+    <div id="goalModal" class="modal goal-modal" role="dialog" aria-modal="true" style="display:none;">
+      <div class="modal-content goal-modal-content">
+        <div class="goal-modal-head">
+          <h2 id="goalModalTitle">Nova meta</h2>
+          <button id="goalModalClose" type="button" class="ghost">Fechar</button>
+        </div>
+        <form id="goalForm" class="goal-form" autocomplete="off">
+          <section class="goal-section">
+            <label class="muted">Alvos rápidos</label>
+            <div id="goalPresetGrid" class="goal-preset-grid"></div>
+          </section>
+          <section class="goal-section">
+            <div class="row">
+              <div class="stack">
+                <label class="muted" for="goalLabel">Nome da meta</label>
+                <input id="goalLabel" type="text" placeholder="Ex.: Primeiros 0.1 BTC" />
+              </div>
+            </div>
+            <div class="row">
+              <div class="stack">
+                <label class="muted" for="goalTargetSats">Meta em sats</label>
+                <input id="goalTargetSats" type="number" min="1" step="1" placeholder="100000" />
+              </div>
+              <div class="stack">
+                <label class="muted" for="goalTargetBtc">ou em BTC</label>
+                <input id="goalTargetBtc" type="number" min="0" step="0.00000001" placeholder="0.01" />
+              </div>
+            </div>
+          </section>
+          <section class="goal-section">
+            <div class="stack">
+              <label class="muted" for="goalScope">Escopo</label>
+              <select id="goalScope">
+                <option value="all">Todos os aportes</option>
+                <option value="strategy">Apenas estratégia</option>
+                <option value="tags">Apenas tags</option>
+                <option value="strategy-tags">Estratégia + tags</option>
+              </select>
+            </div>
+            <div class="row">
+              <div class="stack">
+                <label class="muted" for="goalStrategy">Estratégia (texto livre)</label>
+                <input id="goalStrategy" type="text" placeholder="ex.: dca" list="goalStrategyOptions" />
+                <datalist id="goalStrategyOptions"></datalist>
+              </div>
+              <div class="stack">
+                <label class="muted" for="goalTags">Tags (vírgula)</label>
+                <input id="goalTags" type="text" placeholder="cold,long-term" />
+                <div id="goalTagSuggestions" class="goal-chip-list"></div>
+              </div>
+            </div>
+          </section>
+          <section class="goal-section">
+            <div class="goal-preview" id="goalPreview">Selecione um alvo ou preencha os campos para ver o preview.</div>
+          </section>
+          <div class="goal-form-actions">
+            <button id="goalDeleteBtn" type="button" class="ghost" style="display:none;">Remover meta</button>
+            <div style="margin-left:auto; display:flex; gap:8px;">
+              <button id="goalCancelBtn" type="button" class="ghost">Cancelar</button>
+              <button id="goalSubmitBtn" type="submit" class="primary">Salvar meta</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
 
-</body>
+  <section id="liveChartSection" class="live-chart expanded glass-card glass-strong" aria-hidden="true" data-live-disabled="true" style="display:none;">
+      <div class="live-chart-inner card">
+        <button id="liveChartToggleBtn" class="btn ghost live-toggle" aria-expanded="true">⬇ Recolher gráfico</button>
+        <div class="live-chart-body"><canvas id="liveBtcChart"></canvas></div>
+        <div id="liveChartStatus" class="muted" style="font-size:12px;margin-top:8px;">—</div>
+      </div>
+  </section>
+
+    <div class="chart-controls" style="display:flex;gap:10px;align-items:center;padding:12px 16px;">
+      <label class="muted">Moeda</label>
+      <select id="vsCurrency">
+        <option value="eur">EUR</option>
+        <option value="usd" selected>USD</option>
+        <option value="brl">BRL</option>
+      </select>
+      <label class="muted">Ano</label>
+      <select id="yearSelect"></select>
+      <label class="muted">Visão</label>
+      <select id="chartMode">
+        <option value="line" selected>Linha</option>
+        <option value="candles">Velas (OHLC)</option>
+      </select>
+      <button id="resetBtn" class="ghost">Limpar dados (local)</button>
+  <button id="openPlanilhaBtn" class="btn ghost" disabled aria-disabled="true" title="Marcadores de Aportes (desativado)">Marcadores de Aportes</button>
+      <button id="openChartGlassBtn" class="btn">Ir para gráfico</button>
+      <label class="muted" style="display:flex;align-items:center;gap:6px; margin-left:auto;">
+        <input type="checkbox" id="chartOnlyFiltered" checked />
+        Aplicar filtros no gráfico
+      </label>
+    </div>
+
+    <div id="chartGlassOverlay" class="chart-glass" aria-hidden="true" style="display:none;">
+      <div class="chart-glass-inner">
+        <button id="closeChartGlassBtn" class="btn ghost">Fechar</button>
+        <div class="chart-glass-body"><canvas id="glassBtcChart"></canvas></div>
+      </div>
+    </div>
+
+    <div class="wrap">
+      <aside class="sidebar">
+        <div class="card stack glass-card">
+          <div style="font-weight:800;">Resumo</div>
+          <div id="stats" class="kpiBar">
+            <div class="kpi">
+              <div class="label">Total investido</div>
+              <div class="value" id="kpiInvested">—</div>
+              <div class="note">Inclui fees</div>
+            </div>
+            <div class="kpi">
+              <div class="label">Total sats</div>
+              <div class="value" id="kpiSats">—</div>
+              <div class="note">Aportes abertos</div>
+            </div>
+            <div class="kpi">
+              <div class="label">Preço médio</div>
+              <div class="value" id="kpiAvg">—</div>
+              <div class="note">Ponderado pelos sats</div>
+            </div>
+            <div class="kpi">
+              <div class="label">Valor atual</div>
+              <div class="value" id="kpiCurrent">—</div>
+              <div class="note">Último preço CoinGecko</div>
+            </div>
+            <div class="kpi">
+              <div class="label">Lucro / Prejuízo</div>
+              <div class="value" id="kpiPL">—</div>
+              <div class="note">Contra valor investido</div>
+            </div>
+            <div class="kpi">
+              <div class="label">Retorno (%)</div>
+              <div class="value" id="kpiPLPct">—</div>
+              <div class="note">Percentual acumulado</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card stack glass-card" id="filtersCard">
+          <div style="font-weight:800;">Filtros rápidos</div>
+          <form id="filters-form" class="stack" autocomplete="off">
+            <div class="row">
+              <div class="stack">
+                <label class="muted" for="filter-from">De</label>
+                <input type="date" id="filter-from" />
+              </div>
+              <div class="stack">
+                <label class="muted" for="filter-to">Até</label>
+                <input type="date" id="filter-to" />
+              </div>
+            </div>
+            <div class="row">
+              <div class="stack">
+                <label class="muted" for="filter-min-sats">Min. sats</label>
+                <input type="number" id="filter-min-sats" min="0" step="1" placeholder="ex: 100000" />
+              </div>
+              <div class="stack">
+                <label class="muted" for="filter-search">Busca</label>
+                <input type="text" id="filter-search" placeholder="nota, TXID, carteira..." />
+              </div>
+            </div>
+            <div class="row">
+              <div class="stack">
+                <label class="muted" for="filter-min-price">Preço mínimo</label>
+                <input type="number" id="filter-min-price" min="0" step="0.01" placeholder="ex: 25000" />
+              </div>
+              <div class="stack">
+                <label class="muted" for="filter-max-price">Preço máximo</label>
+                <input type="number" id="filter-max-price" min="0" step="0.01" placeholder="ex: 80000" />
+              </div>
+            </div>
+            <div class="row">
+              <div class="stack">
+                <label class="muted" for="filter-type">Tipo</label>
+                <select id="filter-type">
+                  <option value="all" selected>Todos</option>
+                  <option value="buy">Compra</option>
+                  <option value="sell">Venda</option>
+                </select>
+              </div>
+              <div class="stack">
+                <label class="muted" for="filter-sort">Ordenação</label>
+                <select id="filter-sort">
+                  <option value="date-desc" selected>Data ↓ (recente)</option>
+                  <option value="date-asc">Data ↑ (antiga)</option>
+                  <option value="sats-desc">Sats ↓</option>
+                  <option value="sats-asc">Sats ↑</option>
+                  <option value="price-desc">Preço ↓</option>
+                  <option value="price-asc">Preço ↑</option>
+                  <option value="fiat-desc">Valor (€) ↓</option>
+                  <option value="fiat-asc">Valor (€) ↑</option>
+                </select>
+              </div>
+            </div>
+            <div style="display:flex; gap:8px;">
+              <button type="button" id="filters-reset" class="ghost" style="flex:1;">Limpar filtros</button>
+            </div>
+          </form>
+          <div id="filtersMeta" class="filters-meta" aria-live="polite">
+            <span class="filters-count">0 filtros ativos</span>
+            <span class="filters-total">Mostrando todos os aportes</span>
+            <span class="filters-sort" id="filtersSortLabel">Ordem: data ↓ (recentes)</span>
+          </div>
+        </div>
+
+        <form id="tx-form">
+          <div class="card stack glass-card">
+            <div style="display:flex; align-items:center; justify-content:space-between;">
+              <div>
+                <div style="font-weight:800;">Novo aporte</div>
+                <div class="note">Guarda localmente no seu navegador</div>
+              </div>
+              <button id="fetchPriceBtn" type="button" class="ghost" title="Pegar preço do dia pelo CoinGecko">Buscar preço do dia</button>
+            </div>
+            <div class="row">
+              <div class="stack"><label class="muted">Data</label><input id="tx-date" name="date" type="date" required /></div>
+              <div class="stack"><label class="muted">Sats</label><input id="tx-sats" name="sats" type="number" step="1" placeholder="ex: 10000" required /></div>
+            </div>
+            <div class="row">
+              <div class="stack"><label class="muted">Preço BTC</label><input id="tx-price" name="price" type="number" step="0.01" placeholder="ex: 35000" required /></div>
+              <div class="stack"><label class="muted">Valor (€)</label><input id="tx-fiat" name="fiat" type="number" step="0.01" placeholder="ex: 500" required /></div>
+            </div>
+            <div class="row">
+              <div class="stack"><label class="muted">Fee (€)</label><input id="tx-fee" name="fee" type="number" step="0.01" placeholder="ex: 1.50" /></div>
+              <div class="stack"><label class="muted">Exchange</label><input id="tx-exchange" name="exchange" type="text" placeholder="ex: Kraken" /></div>
+            </div>
+            <div class="row">
+              <div class="stack"><label class="muted">Tipo</label>
+                <select id="tx-type" name="type">
+                  <option value="buy" selected>Compra</option>
+                  <option value="sell">Venda</option>
+                </select>
+              </div>
+              <div class="stack"><label class="muted">Nota</label><input id="tx-note" name="note" type="text" placeholder="opcional" /></div>
+            </div>
+            <div class="row">
+              <div class="stack">
+                <label class="muted" for="tx-strategy">Estratégia (texto livre)</label>
+                <input id="tx-strategy" name="strategy" type="text" placeholder="ex.: dca" list="txStrategyOptions" />
+                <datalist id="txStrategyOptions"></datalist>
+              </div>
+              <div class="stack">
+                <label class="muted" for="tx-tags">Tags (vírgula)</label>
+                <input id="tx-tags" name="tags" type="text" placeholder="cold,long-term" />
+                <div id="txTagSuggestions" class="goal-chip-list"></div>
+              </div>
+            </div>
+            <div class="row">
+              <div class="stack"><label class="muted" for="tx-txid">TXID (opcional)</label><input id="tx-txid" name="txid" type="text" placeholder="hash da transação" autocomplete="off" /></div>
+              <div class="stack"><label class="muted" for="tx-wallet">Endereço / Carteira</label><input id="tx-wallet" name="wallet" type="text" placeholder="bc1..." autocomplete="off" /></div>
+            </div>
+            <div class="tx-actions-row">
+              <div class="tx-actions-buttons">
+                <button id="tx-add" type="submit" class="primary">Adicionar</button>
+                <button id="tx-cancel-edit" type="button" class="ghost" style="display:none;">Cancelar</button>
+              </div>
+              <div id="tx-error" class="muted" role="status" aria-live="polite"></div>
+            </div>
+          </div>
+        </form>
+
+        <div class="card">
+          <div style="font-weight:800;">Gráfico BTC e marcadores de aportes</div>
+          <div id="chartContainer" style="height:320px; margin-top:8px;"><canvas id="btcChart"></canvas></div>
+          <div id="chartLegend" class="note" style="margin-top:6px; font-size:12px;">—</div>
+        </div>
+
+        <div id="monthsContainer" class="card" style="margin-top:8px;">
+          <div style="font-weight:800;">Aportes</div>
+          <div id="monthsGrid" style="display:grid; gap:8px; margin-top:8px;"></div>
+        </div>
+      </aside>
+
+      <main style="display:grid; gap:12px; align-content:start;">
+        <!-- Exportar / Importar moved to footer -->
+
+        <div id="transactionsCard" class="card">
+          <div style="display:flex; align-items:center; justify-content:space-between;">
+            <div style="font-weight:800;">Transações</div>
+            <div id="transactionsMeta" class="muted" style="font-size:12px;">—</div>
+          </div>
+          <table style="width:100%;border-collapse:collapse;margin-top:8px;">
+            <thead><tr><th>Data</th><th>Sats</th><th>Preço</th><th>Status</th><th>Classificação</th><th>Nota</th><th></th></tr></thead>
+            <tbody id="tx-body"></tbody>
+          </table>
+        </div>
+
+        <div id="auditCard" class="card">
+          <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px;">
+            <div>
+              <div style="font-weight:800;">Modo auditoria / Proof Ledger</div>
+              <div class="muted" style="font-size:12px;">Resumo da comprovação dos aportes (dados on-chain vs declarados)</div>
+            </div>
+            <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
+              <button id="auditValidateBtn" type="button" class="ghost" style="font-size:12px; padding:6px 10px;">Validar pendentes</button>
+              <div id="auditMeta" class="muted" style="font-size:12px;">—</div>
+            </div>
+          </div>
+          <div id="auditSummary" class="audit-summary">—</div>
+          <div id="auditDistribution" class="audit-distribution"></div>
+          <div id="auditFilters" class="audit-filters" role="toolbar" aria-label="Filtros de auditoria"></div>
+          <div class="audit-groups">
+            <div class="audit-group">
+              <div class="audit-group-title">Carteiras</div>
+              <div id="auditGroup-wallet" class="audit-group-body">—</div>
+            </div>
+            <div class="audit-group">
+              <div class="audit-group-title">Exchanges</div>
+              <div id="auditGroup-exchange" class="audit-group-body">—</div>
+            </div>
+            <div class="audit-group">
+              <div class="audit-group-title">Estratégias</div>
+              <div id="auditGroup-strategy" class="audit-group-body">—</div>
+            </div>
+          </div>
+          <table class="audit-table">
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Status</th>
+                <th>TXID</th>
+                <th>Conclusão</th>
+              </tr>
+            </thead>
+            <tbody id="auditTableBody">
+              <tr><td colspan="4" class="muted">—</td></tr>
+            </tbody>
+          </table>
+          <div class="audit-footer">
+            <button id="auditShowMoreBtn" type="button" class="ghost small" style="display:none;">Mostrar mais</button>
+          </div>
+        </div>
+
+        <div id="goalsCard" class="card goals-card">
+          <div class="goals-head">
+            <div>
+              <div style="font-weight:800;">Metas em sats</div>
+              <div class="muted" style="font-size:12px;">Defina alvos e veja quais aportes contam para cada meta.</div>
+            </div>
+            <div class="goals-head-actions">
+              <button id="goalsNewBtn" type="button" class="primary small">Nova meta</button>
+            </div>
+          </div>
+          <div id="goalsEmptyState" class="goals-empty">Nenhuma meta cadastrada. Clique em “Nova meta” para começar.</div>
+          <div id="goalsList" class="goals-list" role="list"></div>
+          <div id="goalsDetail" class="goals-detail" style="display:none;">
+            <div class="goals-detail-head">
+              <div>
+                <div id="goalDetailTitle" class="goals-detail-title">Selecione uma meta</div>
+                <div id="goalDetailMeta" class="muted goals-detail-meta">—</div>
+              </div>
+              <div class="goals-detail-actions">
+                <button id="goalsEditActiveBtn" type="button" class="ghost small" disabled>Editar</button>
+                <button id="goalsDeleteActiveBtn" type="button" class="ghost small" disabled>Remover</button>
+              </div>
+            </div>
+            <div id="goalDetailStats" class="goals-detail-stats"></div>
+            <div id="goalDetailEntriesWrapper" class="goals-detail-table-wrapper">
+              <table class="goals-detail-table">
+                <thead>
+                  <tr>
+                    <th>Data</th>
+                    <th>Sats</th>
+                    <th>Valor (fiat)</th>
+                    <th>Estratégia</th>
+                    <th>Tags</th>
+                  </tr>
+                </thead>
+                <tbody id="goalDetailTableBody">
+                  <tr><td colspan="5" class="muted">Selecione uma meta para ver os aportes correspondentes.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <script type="module" src="./js/app.js"></script>
+    <!-- Liquid Glass: defs globais -->
+    <footer style="padding:12px 20px; display:flex; justify-content:center; gap:12px; align-items:center;">
+      <button id="btn-export" class="ghost">Exportar JSON</button>
+      <button id="btn-export-csv" class="ghost">Exportar CSV</button>
+      <label class="ghost" for="file-import" style="cursor:pointer; display:flex; align-items:center; gap:8px;">Importar JSON
+        <input id="file-import" type="file" accept="application/json,.json,.txt" hidden />
+      </label>
+    </footer>
+    <svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute;overflow:hidden">
+      <defs>
+        <filter id="glass-distortion" x="0%" y="0%" width="100%" height="100%">
+          <feTurbulence type="fractalNoise" baseFrequency="0.008 0.008" numOctaves="2" seed="92" result="noise"/>
+          <feGaussianBlur in="noise" stdDeviation="2" result="blurred"/>
+          <feDisplacementMap in="SourceGraphic" in2="blurred" scale="77" xChannelSelector="R" yChannelSelector="G"/>
+        </filter>
+      </defs>
+    </svg>
+  </body>
 </html>
-      // REGION: Import Validation + Backup (delegated to shared module)
-      function backupLocalData() {
-        try {
-          const snap = localStorage.getItem('btcJournalV1') ?? '[]';
-          const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-          localStorage.setItem(`btcJournalV1.bak.${stamp}`, snap);
-        } catch (e) { console.error('Falha ao criar backup local:', e); }
-      }
-
-  // sanitização é feita pelo módulo import-sanitizer.js (importado em js/app.js)
-
-      function listBackups() {
-        const keys = [];
-        for (let i = 0; i < localStorage.length; i++) {
-          const k = localStorage.key(i);
-          if (k && k.startsWith('btcJournalV1.bak.')) keys.push(k);
-        }
-        // ordenar descendente (mais recente primeiro)
-        return keys.sort().reverse();
-      }
-
-      async function restoreBackup(key) {
-        if (!key) return false;
-        const val = localStorage.getItem(key);
-        if (!val) return false;
-        try {
-          const parsed = JSON.parse(val);
-          if (!Array.isArray(parsed) && !(parsed && parsed.entries)) {
-            // tentar detectar formato antigo: se for object with entries, ok; if array assume entries
-            // se formato inválido, abort
-            if (!Array.isArray(parsed)) {
-              window.showMessage?.('Formato do backup inválido. Restauração abortada.', 'error') ?? alert('Formato do backup inválido. Restauração abortada.');
-              return false;
-            }
-          }
-          // confirmar via modal customizado
-          // usa window.confirmModalAsync que retorna Promise<boolean>
-          const _shouldRestore = await window.confirmModalAsync('Tem a certeza que quer restaurar este backup? Os dados atuais serão substituídos.');
-          if (!_shouldRestore) return false;
-          // aplicar
-          const payload = Array.isArray(parsed) ? { entries: parsed } : parsed;
-          const res = sanitizeImportPayload(payload);
-          if (!res.ok) { window.showMessage?.('O backup contém entradas inválidas e não pode ser restaurado.', 'error'); return false; }
-          // criar backup atual antes de sobrescrever
-          backupLocalData();
-          state.entries = res.entries;
-          if (res.vs) state.vs = res.vs;
-          if (res.year) state.year = res.year;
-          saveEntries();
-          await fetchPrices(800);
-          if (state.chartMode === 'candles') await fetchOHLC(90);
-          renderAll();
-          window.showMessage?.('Backup restaurado com sucesso.', 'success');
-          return true;
-        } catch (err) {
-          console.error('Erro ao restaurar backup:', err);
-          window.showMessage?.('Erro ao restaurar backup. Veja a consola para mais detalhes.', 'error');
-          return false;
-        }
-      }
-
-      $('#importInput').addEventListener('change', async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        const text = await file.text();
-        try {
-          const parsed = JSON.parse(text);
-      const res = sanitizeImportPayload(parsed);
-      if (!res.ok) { window.showMessage?.(res.reason || 'Arquivo inválido', 'error'); e.target.value = ''; return; }
-
-          // Aviso sobre grande quantidade de entradas
-          if (res.entries.length > 5000) {
-            const okBig = await window.confirmModalAsync(`O ficheiro contém ${res.entries.length} entradas — isto é muito grande e pode afectar o navegador. Quer continuar?`);
-            if (!okBig) { e.target.value = ''; return; }
-          }
-
-          let proceedMsg = `Foram encontradas ${res.entries.length} entradas válidas.`;
-          if (res.invalid && res.invalid.length) proceedMsg += ` ${res.invalid.length} entradas inválidas serão ignoradas.`;
-          proceedMsg += '\nQuer substituir os seus dados locais por estas entradas válidas?';
-
-          const okProceed = await window.confirmModalAsync(proceedMsg);
-          if (!okProceed) { e.target.value = ''; return; }
-
-          // Backup antes de sobrescrever
-          backupLocalData();
-
-          // Aplicar alterações
-          state.entries = res.entries;
-          state.vs = res.vs;
-          state.year = res.year;
-          try { $('#vsCurrency').value = state.vs; } catch (err) {}
-          try { $('#yearSelect').value = state.year; } catch (err) {}
-          saveEntries();
-          await fetchPrices(800);
-          if (state.chartMode === 'candles') await fetchOHLC(90);
-          renderAll();
-          window.showMessage?.(`Import concluído: ${res.entries.length} entradas importadas com sucesso.`, 'success');
-        } catch (err) {
-          console.error('Erro ao importar JSON:', err);
-          window.showMessage?.('Ocorreu um erro ao processar o ficheiro. Verifique se é um JSON válido e se o formato corresponde ao esperado.', 'error');
-        }
-        e.target.value = '';
-      });
-
-      // Restore backups buttons
-      $('#restoreLastBackupBtn').addEventListener('click', async () => {
-        const keys = listBackups();
-  if (!keys.length) { window.showMessage?.('Nenhum backup local encontrado.', 'warn'); return; }
-        const last = keys[0];
-        const okLast = await window.confirmModalAsync('Restaurar o último backup local? Esta ação substituirá os seus dados atuais.');
-        if (okLast) { await restoreBackup(last); }
-      });
-
-      $('#chooseBackupBtn').addEventListener('click', async () => {
-        const keys = listBackups();
-  if (!keys.length) { window.showMessage?.('Nenhum backup local encontrado.', 'warn'); return; }
-        // Mostrar menu simples: lista com índices
-        const menu = keys.map((k, i) => `${i + 1}. ${k}`).join('\n');
-        const choice = prompt(`Backups locais:\n${menu}\n\nDigite o número do backup a restaurar:`);
-        if (!choice) return;
-        const idx = parseInt(choice, 10) - 1;
-  if (isNaN(idx) || idx < 0 || idx >= keys.length) { window.showMessage?.('Seleção inválida.', 'warn'); return; }
-        await restoreBackup(keys[idx]);
-      });
-
-      // NOVO: Eventos do Modal de Edição
-      $('.close-button').addEventListener('click', () => {
-        $('#editModal').style.display = 'none';
-        state.editingEntryId = null;
-      });
-      $('#saveEditBtn').addEventListener('click', () => {
-        if (!state.editingEntryId) return;
-        const idx = state.entries.findIndex(e => e.id === state.editingEntryId);
-        if (idx < 0) return;
-
-        const newDate = $('#editDateInput').value;
-        const newPrice = parseFloat($('#editPriceInput').value);
-        const newFiat = parseFloat($('#editFiatInput').value);
-        const newFee = parseFloat($('#editFeeInput').value) || 0;
-        const newWeight = parseFloat($('#editWeightInput').value) || null;
-
-        if (!newDate || !isFinite(newPrice) || !isFinite(newFiat) || newPrice <= 0) {
-          alert('Preencha, no mínimo, a data, o preço do BTC (maior que zero) e o valor do aporte.'); return;
-        }
-
-        state.entries[idx].date = newDate;
-        state.entries[idx].price = newPrice;
-        state.entries[idx].fiat = newFiat;
-        state.entries[idx].fee = newFee;
-        state.entries[idx].sats = satsFrom(newFiat, newPrice); // Recalcula sats
-        state.entries[idx].weight = newWeight;
-
-        saveEntries();
-        renderAll();
-        $('#editModal').style.display = 'none';
-        state.editingEntryId = null;
-      });
-      // Fechar modal ao clicar fora dele
-      window.addEventListener('click', (event) => {
-        if (event.target == $('#editModal')) {
-          $('#editModal').style.display = 'none';
-          state.editingEntryId = null;
-        }
-      });
-    }
-
-    function recalcSats() {
-      const fiat = parseFloat($('#fiatInput').value);
-      const price = parseFloat($('#priceInput').value);
-      if (isFinite(fiat) && isFinite(price) && price > 0) {
-        const sats = satsFrom(fiat, price);
-        $('#satsOutput').value = new Intl.NumberFormat('pt-PT').format(sats);
-        $('#avgOutput').value = fmt(price);
-      } else {
-        $('#satsOutput').value = '';
-        $('#avgOutput').value = '';
-      }
-    }
-
-    // =====================
-    // Boot
-    // =====================
-    async function boot() {
-      Chart.register(ChartjsPluginAnnotation);
-
-      hydrateYearOptions();
-      bindEvents();
-      $('#vsCurrency').value = state.vs;
-      $('#dateInput').valueAsDate = new Date();
-      
-      await fetchPrices(800);
-      if (state.chartMode === 'candles') await fetchOHLC(90);
-      renderAll();
-    }
-
-    boot();
-});
-
