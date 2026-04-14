@@ -1,6 +1,12 @@
 # BTC Journal - Project Brain
 
-Revisado localmente em 2026-04-05.
+## ⚖️ Regra de Ouro para Agentes
+
+**Estado técnico = filesystem + git. Brain = decisões + contexto. Nunca ao contrário.**
+
+- Verificar filesystem antes de reportar qualquer estado
+- Ver `docs/DEFINITION_OF_DONE.md` antes de fechar qualquer milestone
+- Repo canónico: `/Users/lucas_phx/Documents/btc-journal-structured`
 
 ## Visao geral
 - Aplicacao web estatica (SPA) para registrar aportes em Bitcoin, acompanhar custo medio, lucro/prejuizo, auditoria de TXIDs e metas em sats.
@@ -249,29 +255,20 @@ Observacao:
 - Prioridade de seguranca operacional: reforcar o fluxo de backup/export antes de migracoes ou imports destrutivos.
 
 ## Estado atual
-- O projeto local esta funcional e com testes verdes.
-- A aplicacao ja cobre:
-  - registro e edicao de aportes
-  - filtros e dashboard
-  - persistencia local versionada
-  - import/export
-  - migracao legado -> v3
-  - auditoria de TXID
-  - metas em sats com strategy/tags
-  - graficos historicos e live
-- O maior gargalo agora nao e falta de funcionalidade, e sim organizacao/manutenibilidade do runtime principal.
-- A partir de 2026-04-05, o projeto passa a ter processo oficial documentado em `docs/`, com separacao entre memoria viva (`project-brain.md`) e snapshot de medio prazo (ZIP por milestone).
-- O Milestone M1 esta refletido no runtime atual com tabela/filtros separados em `js/ui/table/helpers.js`, `js/ui/table/render.js` e `js/ui/table/bind.js`.
-- O Milestone M2 esta refletido no runtime atual com import/export separados em `js/ui/import-export/helpers.js`, `js/ui/import-export/render.js` e `js/ui/import-export/bind.js`.
-- O Milestone M3-A esta encerrado: dominio de auditoria/TXID separado em `js/ui/audit/helpers.js`, `js/ui/audit/render.js` e `js/ui/audit/bind.js`. Verificado com 23 suites / 123 testes verdes em 2026-04-14.
-- O `js/app.js` continua como hotspot, mas agora com menos acoplamento nos dominios de tabela/filtros, import/export e audit.
 
-## Incidente visual encerrado por ora
-- Houve relato visual anterior de JavaScript aparecendo como texto no rodape, abaixo da area do formulario.
-- O problema nao foi reproduzido no estado atual do projeto ao inspecionar `index.html`, o DOM renderizado localmente e screenshots em headless Chrome.
-- Nenhuma correcao foi aplicada porque nao houve causa raiz reproduzivel no codigo atual.
+> Ver `git log --oneline` para estado técnico atual. Este documento não declara o que está feito — o git é a fonte de verdade.
 
-## Proximo passo operacional
-- M3-A encerrado (2026-04-14): auditoria/TXID separado em `ui/audit/*`, 23 suites / 123 testes verdes.
-- Proximo marco: M3-B — separacao do dominio de metas (goals) com o mesmo protocolo de recorte controlado.
-- Ficheiros envolvidos: `js/core/goals.js`, `js/features/goals-controller.js` — a separar em `js/ui/goals/*` quando aplicavel.
+Funcionalidades presentes no código (verificar com `git ls-files js/`):
+- Registro e edição de aportes
+- Filtros, dashboard e gráficos
+- Persistência local versionada (schema v3)
+- Import/export com preview
+- Migração legado → v3
+- Validação de TXID on-chain
+- Metas em sats com strategy/tags
+- UI modularizada: `ui/table/*`, `ui/import-export/*`, `ui/audit/*`
+
+## Próximo passo
+
+Próximo marco de produto: **M3-B** — separação do domínio de metas (goals).
+Aplicar o mesmo protocolo de recorte controlado com DoD em `docs/DEFINITION_OF_DONE.md`.
