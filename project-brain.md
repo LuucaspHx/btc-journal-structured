@@ -263,7 +263,8 @@ Observacao:
 - A partir de 2026-04-05, o projeto passa a ter processo oficial documentado em `docs/`, com separacao entre memoria viva (`project-brain.md`) e snapshot de medio prazo (ZIP por milestone).
 - O Milestone M1 esta refletido no runtime atual com tabela/filtros separados em `js/ui/table/helpers.js`, `js/ui/table/render.js` e `js/ui/table/bind.js`.
 - O Milestone M2 esta refletido no runtime atual com import/export separados em `js/ui/import-export/helpers.js`, `js/ui/import-export/render.js` e `js/ui/import-export/bind.js`.
-- O `js/app.js` continua como hotspot, mas agora com menos acoplamento nos dominios de tabela/filtros e import/export.
+- O Milestone M3-A esta encerrado: dominio de auditoria/TXID separado em `js/ui/audit/helpers.js`, `js/ui/audit/render.js` e `js/ui/audit/bind.js`. Verificado com 23 suites / 123 testes verdes em 2026-04-14.
+- O `js/app.js` continua como hotspot, mas agora com menos acoplamento nos dominios de tabela/filtros, import/export e audit.
 
 ## Incidente visual encerrado por ora
 - Houve relato visual anterior de JavaScript aparecendo como texto no rodape, abaixo da area do formulario.
@@ -271,10 +272,6 @@ Observacao:
 - Nenhuma correcao foi aplicada porque nao houve causa raiz reproduzivel no codigo atual.
 
 ## Proximo passo operacional
-- Concluir o smoke manual curto do dominio de import/export para encerrar formalmente o M2.
-- Validacao minima esperada:
-  - `npm test`
-  - smoke manual curto do modal de exportacao/importacao
-  - verificacao de escopo no diff
-- Proximo passo tecnico apos o smoke:
-  - iniciar a separacao do painel de auditoria/TXID em `ui/audit/*`
+- M3-A encerrado (2026-04-14): auditoria/TXID separado em `ui/audit/*`, 23 suites / 123 testes verdes.
+- Proximo marco: M3-B — separacao do dominio de metas (goals) com o mesmo protocolo de recorte controlado.
+- Ficheiros envolvidos: `js/core/goals.js`, `js/features/goals-controller.js` — a separar em `js/ui/goals/*` quando aplicavel.

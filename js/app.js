@@ -5,10 +5,9 @@ import { normalizeEntry, sanitizeImportPayload, validateTransaction } from './co
 import { satsFrom, pmMedio, satsToBtc } from './core/calculations.js';
 import { loadState as storageLoadState, saveState as storageSaveState, backupLocalData } from './storage/local-db.js';
 import { detectOldKey, migrateV1ToV3 } from './storage/migrations.js';
-import { computeAuditMetrics, getAuditPriority } from './core/audit.js';
 import { getPresetGoals, normalizeGoal as normalizeGoalConfig, computeGoalProgress } from './core/goals.js';
 import { createGoalsController, createEmptyGoalsState, hydrateGoalsState } from './features/goals-controller.js';
-import { validateTxidEntry, buildExplorerUrl, resolveNetwork, TXID_STATUS } from './services/txid-service.js';
+import { validateTxidEntry, buildExplorerUrl, TXID_STATUS } from './services/txid-service.js';
 import {
   shortTxid,
   getEffectiveTxStatus,
@@ -22,6 +21,14 @@ import {
 } from './ui/table/helpers.js';
 import { updateFiltersMeta, renderTable, renderStats } from './ui/table/render.js';
 import { bindFilters, bindTableActions, bindYearSelect } from './ui/table/bind.js';
+import {
+  AUDIT_FILTERS,
+  AUDIT_TABLE_DEFAULT_LIMIT,
+  AUDIT_TABLE_MAX,
+  AUDIT_TABLE_STEP
+} from './ui/audit/helpers.js';
+import { renderAuditPanel } from './ui/audit/render.js';
+import { bindAuditControls } from './ui/audit/bind.js';
 import {
   csvEscape,
   prepareImportPayloadFromText
@@ -66,25 +73,7 @@ const filterState = {
   sort: 'date-desc'
 };
 const auditFilterState = { status: 'all' };
-const AUDIT_FILTERS = [
-  { id: 'all', label: 'Todos' },
-  { id: 'with-txid', label: 'Com TXID' },
-  { id: 'validated', label: 'Validados' },
-  { id: 'pending', label: 'Pendentes' },
-  { id: 'issues', label: 'Divergentes' },
-  { id: 'manual', label: 'Manuais' }
-];
-const AUDIT_TABLE_DEFAULT_LIMIT = 10;
-const AUDIT_TABLE_STEP = 10;
-const AUDIT_TABLE_MAX = 200;
 const auditViewState = { limit: AUDIT_TABLE_DEFAULT_LIMIT };
-const AUDIT_DISTRIBUTION = [
-  { id: 'validated', label: 'Validados', statuses: [TXID_STATUS.CONFIRMED], tone: 'success' },
-  { id: 'pending', label: 'Pendentes', statuses: [TXID_STATUS.PENDING], tone: 'info' },
-  { id: 'partial', label: 'Parciais', statuses: [TXID_STATUS.INCONCLUSIVE], tone: 'warn' },
-  { id: 'issues', label: 'Divergentes', statuses: [TXID_STATUS.MISMATCH, TXID_STATUS.INVALID], tone: 'error' },
-  { id: 'manual', label: 'Manuais', statuses: [TXID_STATUS.MANUAL], tone: 'muted' }
-];
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const PRICE_RANGE_PADDING_DAYS = 5;
@@ -630,39 +619,6 @@ function getLatestMarketPrice() {
   return null;
 }
 
-function aggregateAuditBy(entries = [], resolver) {
-  const map = new Map();
-  entries.forEach((tx) => {
-    const raw = resolver(tx);
-    const key = raw && String(raw).trim() ? String(raw).trim() : '—';
-    const bucket = map.get(key) || {
-      label: key,
-      count: 0,
-      totalSats: 0,
-      validated: 0,
-      pending: 0,
-      issues: 0,
-      manual: 0
-    };
-    bucket.count += 1;
-    bucket.totalSats += getTxSats(tx);
-    const status = getEffectiveTxStatus(tx);
-    if (status === TXID_STATUS.CONFIRMED) bucket.validated += 1;
-    else if (status === TXID_STATUS.PENDING || status === TXID_STATUS.INCONCLUSIVE) bucket.pending += 1;
-    else if (status === TXID_STATUS.MISMATCH || status === TXID_STATUS.INVALID) bucket.issues += 1;
-    else bucket.manual += 1;
-    map.set(key, bucket);
-  });
-  return Array.from(map.values())
-    .sort((a, b) => {
-      if (b.issues !== a.issues) return b.issues - a.issues;
-      if (b.pending !== a.pending) return b.pending - a.pending;
-      if (b.validated !== a.validated) return b.validated - a.validated;
-      return b.totalSats - a.totalSats;
-    })
-    .slice(0, 5);
-}
-
 function createTxStatusBadge(tx) {
   const status = getEffectiveTxStatus(tx);
   const chip = document.createElement('span');
@@ -766,212 +722,21 @@ async function validatePendingTxids() {
   showMessage(msg, tone);
 }
 
-function renderAuditPanel() {
-  const summaryEl = document.getElementById('auditSummary');
-  const metaEl = document.getElementById('auditMeta');
-  const tableBody = document.getElementById('auditTableBody');
-  const filtersEl = document.getElementById('auditFilters');
-  const distributionEl = document.getElementById('auditDistribution');
-  const showMoreBtn = document.getElementById('auditShowMoreBtn');
-  if (!summaryEl || !tableBody) return;
-  const metrics = computeAuditMetrics(state.txs || []);
-  const { totals, satsAgg, entries, byStatus } = metrics;
-  const summaryData = [
-    { label: 'Total de aportes', value: totals.total || 0 },
-    { label: 'Com TXID', value: totals.withTxid || 0, hint: `${totals.proofPercent || 0}%` },
-    { label: 'Validados', value: totals.validated || 0, hint: `${totals.validatedPercent || 0}%` },
-    { label: 'Pendentes', value: totals.pending || 0 },
-    { label: 'Divergentes', value: (totals.mismatch + totals.invalid) || 0 },
-    { label: 'Sats validados', value: fmtInt(satsAgg.validated) || '0', hint: `${satsAgg.validatedPercent || 0}%` }
-  ];
-  while (summaryEl.firstChild) summaryEl.removeChild(summaryEl.firstChild);
-  for (const item of summaryData) {
-    const pill = document.createElement('div');
-    pill.className = 'audit-pill';
-    const label = document.createElement('span');
-    label.textContent = item.label;
-    const value = document.createElement('strong');
-    value.textContent = item.value;
-    pill.appendChild(label);
-    pill.appendChild(value);
-    if (item.hint) {
-      const hint = document.createElement('span');
-      hint.className = 'muted';
-      hint.textContent = item.hint;
-      pill.appendChild(hint);
-    }
-    summaryEl.appendChild(pill);
-  }
-  if (metaEl) {
-    if (totals.total) {
-      metaEl.textContent = `${totals.validatedPercent || 0}% validados • ${totals.proofPercent || 0}% com TXID`;
-    } else {
-      metaEl.textContent = 'Nenhum aporte cadastrado.';
-    }
-  }
-  if (distributionEl) {
-    while (distributionEl.firstChild) distributionEl.removeChild(distributionEl.firstChild);
-    AUDIT_DISTRIBUTION.forEach((cfg) => {
-      const aggregate = cfg.statuses.reduce((acc, status) => {
-        const bucket = byStatus?.[status];
-        if (bucket) {
-          acc.count += bucket.count;
-          acc.sats += bucket.sats;
-        }
-        return acc;
-      }, { count: 0, sats: 0 });
-      const percent = totals.total ? Math.round((aggregate.count / totals.total) * 100) : 0;
-      const row = document.createElement('div');
-      row.className = `audit-distribution-row tone-${cfg.tone}`;
-      const head = document.createElement('div');
-      head.className = 'audit-distribution-head';
-      const label = document.createElement('span');
-      label.textContent = `${cfg.label} (${aggregate.count})`;
-      const pct = document.createElement('span');
-      pct.textContent = `${percent}%`;
-      head.appendChild(label);
-      head.appendChild(pct);
-      const progress = document.createElement('div');
-      progress.className = 'audit-progress';
-      const bar = document.createElement('div');
-      bar.className = `audit-progress-bar tone-${cfg.tone}`;
-      bar.style.width = `${Math.min(100, percent)}%`;
-      progress.appendChild(bar);
-      row.appendChild(head);
-      row.appendChild(progress);
-      distributionEl.appendChild(row);
-    });
-  }
-  if (filtersEl) {
-    while (filtersEl.firstChild) filtersEl.removeChild(filtersEl.firstChild);
-    AUDIT_FILTERS.forEach((filter) => {
-      let count = totals.total;
-      if (filter.id === 'with-txid') count = totals.withTxid;
-      else if (filter.id === 'validated') count = totals.validated;
-      else if (filter.id === 'pending') count = totals.pending;
-      else if (filter.id === 'issues') count = (totals.mismatch + totals.invalid) || 0;
-      else if (filter.id === 'manual') count = totals.manual;
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.dataset.filter = filter.id;
-      btn.textContent = `${filter.label} (${count})`;
-      if (auditFilterState.status === filter.id) btn.classList.add('active');
-      btn.disabled = filter.id !== 'all' && count === 0;
-      filtersEl.appendChild(btn);
-    });
-  }
-  const filteredEntries = filterAuditEntries(entries);
-  renderAuditGroup('auditGroup-wallet', aggregateAuditBy(entries, (tx) => tx.wallet), 'Sem carteiras registradas.');
-  renderAuditGroup('auditGroup-exchange', aggregateAuditBy(entries, (tx) => tx.exchange), 'Sem exchanges registradas.');
-  renderAuditGroup('auditGroup-strategy', aggregateAuditBy(entries, (tx) => tx.strategy), 'Sem estratégias registradas.');
-  while (tableBody.firstChild) tableBody.removeChild(tableBody.firstChild);
-  if (!filteredEntries.length) {
-    const tr = document.createElement('tr');
-    const td = document.createElement('td');
-    td.colSpan = 4;
-    td.className = 'muted';
-    td.textContent = entries.length
-      ? 'Nenhum aporte corresponde ao filtro selecionado.'
-      : 'Nenhum aporte para exibir.';
-    tr.appendChild(td);
-    tableBody.appendChild(tr);
-    return;
-  }
-  const sorted = filteredEntries
-    .slice()
-    .sort((a, b) => {
-      const pri = getAuditPriority(a) - getAuditPriority(b);
-      if (pri !== 0) return pri;
-      const timeDiff = new Date(getTxDate(b)).getTime() - new Date(getTxDate(a)).getTime();
-      return Number.isNaN(timeDiff) ? 0 : timeDiff;
-    });
-  const limit = Math.min(auditViewState.limit, AUDIT_TABLE_MAX);
-  const limited = sorted.slice(0, limit);
-  const remaining = Math.max(0, sorted.length - limited.length);
-  if (showMoreBtn) {
-    if (remaining > 0) {
-      showMoreBtn.style.display = 'inline-flex';
-      showMoreBtn.textContent = `Mostrar mais (${remaining})`;
-      showMoreBtn.onclick = () => {
-        auditViewState.limit = Math.min(AUDIT_TABLE_MAX, auditViewState.limit + AUDIT_TABLE_STEP);
-        renderAuditPanel();
-      };
-    } else {
-      showMoreBtn.style.display = 'none';
-      showMoreBtn.onclick = null;
-    }
-  }
-  for (const tx of limited) {
-    const tr = document.createElement('tr');
-    const tdDate = document.createElement('td');
-    tdDate.textContent = getTxDate(tx);
-    const tdStatus = document.createElement('td');
-    tdStatus.appendChild(createTxStatusBadge(tx));
-    const tdTxid = document.createElement('td');
-    if (tx.txid) {
-      const link = document.createElement('a');
-      link.textContent = shortTxid(tx.txid);
-      const explorer = tx.validation?.explorerUrl || buildExplorerUrl(tx.txid, { network: inferNetworkFromTx(tx) });
-      link.href = explorer;
-      link.target = '_blank';
-      link.rel = 'noreferrer noopener';
-      tdTxid.appendChild(link);
-    } else {
-      tdTxid.textContent = '—';
-    }
-    const tdConclusion = document.createElement('td');
-    const declared = document.createElement('span');
-    declared.className = 'muted';
-    declared.textContent = `Declarado: ${fmtInt(getTxSats(tx))} sats (${fmtCurrency(getTxFiat(tx), currentFiatCurrency()) || '—'})`;
-    const found = document.createElement('span');
-    found.className = 'muted';
-    if (tx.validation?.matchedSats != null || tx.validation?.expectedSats != null) {
-      found.textContent = `Explorer: ${fmtInt(tx.validation.matchedSats || 0)} / ${fmtInt(tx.validation.expectedSats || 0)} sats`;
-    } else {
-      found.textContent = 'Explorer: —';
-    }
-    const reason = document.createElement('div');
-    reason.textContent = tx.validation?.reason || 'Sem validação registrada.';
-    tdConclusion.appendChild(reason);
-    tdConclusion.appendChild(declared);
-    tdConclusion.appendChild(found);
-    if (tx.txidLastCheckedAt) {
-      const timeLine = document.createElement('span');
-      timeLine.className = 'muted';
-      const date = new Date(tx.txidLastCheckedAt);
-      timeLine.textContent = `Revisado em ${date.toLocaleString('pt-BR')}`;
-      tdConclusion.appendChild(timeLine);
-    }
-    tr.appendChild(tdDate);
-    tr.appendChild(tdStatus);
-    tr.appendChild(tdTxid);
-    tr.appendChild(tdConclusion);
-    tableBody.appendChild(tr);
-  }
-}
-
-function filterAuditEntries(entries = []) {
-  const filterId = auditFilterState.status || 'all';
-  return entries.filter((tx) => matchesAuditFilter(tx, filterId));
-}
-
-function matchesAuditFilter(tx, filterId = 'all') {
-  if (filterId === 'all') return true;
-  const status = getEffectiveTxStatus(tx);
-  switch (filterId) {
-    case 'with-txid':
-      return Boolean(tx.txid);
-    case 'validated':
-      return status === TXID_STATUS.CONFIRMED;
-    case 'pending':
-      return status === TXID_STATUS.PENDING;
-    case 'issues':
-      return status === TXID_STATUS.MISMATCH || status === TXID_STATUS.INVALID;
-    case 'manual':
-      return !tx.txid;
-    default:
-      return true;
-  }
+function renderAudit() {
+  renderAuditPanel({
+    txs: state.txs || [],
+    filterId: auditFilterState.status,
+    limit: auditViewState.limit,
+    createTxStatusBadge,
+    getExplorerUrl: (tx) => (
+      tx?.txid
+        ? (tx.validation?.explorerUrl || buildExplorerUrl(tx.txid, { network: inferNetworkFromTx(tx) }))
+        : null
+    ),
+    fmtInt,
+    fmtCurrency,
+    currentFiatCurrency
+  });
 }
 
 function setAuditFilter(nextFilter = 'all') {
@@ -980,52 +745,7 @@ function setAuditFilter(nextFilter = 'all') {
   if (auditFilterState.status === resolved) return;
   auditFilterState.status = resolved;
   auditViewState.limit = AUDIT_TABLE_DEFAULT_LIMIT;
-  renderAuditPanel();
-}
-
-function renderAuditGroup(containerId, items = [], emptyMessage = 'Sem dados') {
-  const container = document.getElementById(containerId);
-  if (!container) return;
-  while (container.firstChild) container.removeChild(container.firstChild);
-  if (!items.length) {
-    const msg = document.createElement('div');
-    msg.className = 'muted';
-    msg.textContent = emptyMessage;
-    container.appendChild(msg);
-    return;
-  }
-  items.forEach((item) => {
-    const row = document.createElement('div');
-    row.className = 'audit-group-row';
-    const head = document.createElement('div');
-    head.className = 'audit-group-head';
-    const label = document.createElement('span');
-    label.textContent = item.label;
-    const count = document.createElement('span');
-    count.textContent = item.count;
-    head.appendChild(label);
-    head.appendChild(count);
-    const meta = document.createElement('div');
-    meta.className = 'audit-group-meta';
-    meta.textContent = `${fmtInt(item.totalSats)} sats`;
-    const chips = document.createElement('div');
-    chips.className = 'audit-group-chips';
-    const addChip = (label, count, tone) => {
-      if (!count) return;
-      const chip = document.createElement('span');
-      chip.className = `audit-chip tone-${tone}`;
-      chip.textContent = `${label}: ${count}`;
-      chips.appendChild(chip);
-    };
-    addChip('✔︎', item.validated, 'success');
-    addChip('…', item.pending, 'info');
-    addChip('⚠︎', item.issues, 'error');
-    addChip('—', item.manual, 'muted');
-    row.appendChild(head);
-    row.appendChild(meta);
-    row.appendChild(chips);
-    container.appendChild(row);
-  });
+  renderAudit();
 }
 
 const GOAL_DETAIL_MAX_ROWS = 50;
@@ -1096,7 +816,12 @@ function renderGoalsPanel(snapshot = goalsController.getSnapshot()) {
       progressWrap.appendChild(bar);
       const meta = document.createElement('div');
       meta.className = 'goal-card-meta';
-      meta.innerHTML = `<span>${progress.percent || 0}%</span><span>${fmtInt(progress.accumulatedSats || 0)} sats</span>`;
+      const percentSpan = document.createElement('span');
+      percentSpan.textContent = `${progress.percent || 0}%`;
+      const satsSpan = document.createElement('span');
+      satsSpan.textContent = `${fmtInt(progress.accumulatedSats || 0)} sats`;
+      meta.appendChild(percentSpan);
+      meta.appendChild(satsSpan);
       const tagsWrap = document.createElement('div');
       tagsWrap.className = 'goal-card-tags';
       if (goal.strategy) {
@@ -1148,7 +873,14 @@ function renderGoalDetail(goal, progress, entries = []) {
     titleEl.textContent = 'Selecione uma meta';
     metaEl.textContent = '—';
     statsEl.innerHTML = '';
-    tableBody.innerHTML = '<tr><td colspan=\"5\" class=\"muted\">Selecione uma meta para ver os aportes correspondentes.</td></tr>';
+    while (tableBody.firstChild) tableBody.removeChild(tableBody.firstChild);
+    const row = document.createElement('tr');
+    const cell = document.createElement('td');
+    cell.colSpan = 5;
+    cell.className = 'muted';
+    cell.textContent = 'Selecione uma meta para ver os aportes correspondentes.';
+    row.appendChild(cell);
+    tableBody.appendChild(row);
     if (wrapper) {
       const note = wrapper.querySelector('.goal-detail-note');
       if (note) note.remove();
@@ -1915,24 +1647,6 @@ function bindForm() {
   });
 }
 
-function bindAuditControls() {
-  const btn = document.getElementById('auditValidateBtn');
-  if (btn && !btn.dataset.bound) {
-    btn.dataset.bound = 'true';
-    btn.addEventListener('click', () => validatePendingTxids());
-  }
-  const filters = document.getElementById('auditFilters');
-  if (filters && !filters.dataset.bound) {
-    filters.dataset.bound = 'true';
-    filters.addEventListener('click', (event) => {
-      const target = event.target.closest('button[data-filter]');
-      if (!target) return;
-      const filterId = target.dataset.filter;
-      setAuditFilter(filterId);
-    });
-  }
-}
-
 async function handleValidateTxid(id) {
   const tx = findTxById(id);
   if (!tx) {
@@ -2656,7 +2370,14 @@ function boot() {
     }
   });
   bindChartFilterToggle();
-  bindAuditControls();
+  bindAuditControls({
+    onValidatePending: () => validatePendingTxids(),
+    onFilterChange: (filterId) => setAuditFilter(filterId),
+    onShowMore: () => {
+      auditViewState.limit = Math.min(AUDIT_TABLE_MAX, auditViewState.limit + AUDIT_TABLE_STEP);
+      renderAudit();
+    }
+  });
   bindGoalControls();
   hydrateYearOptions();
   renderAll();
@@ -2896,7 +2617,7 @@ function renderAll() {
   });
   renderMonths(visible);
   renderChart(visible);
-  renderAuditPanel();
+  renderAudit();
   updateFiltersMeta({
     visibleCount: visible.length,
     totalCount: (state.txs || []).length,

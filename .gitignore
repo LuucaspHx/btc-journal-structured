@@ -13,3 +13,11 @@ yarn-error.log*
 __pycache__/
 *.sqlite
 .github/copilot-instructions.md
+
+# Claude Code local config
+.claude/
+
+# Resíduos operacionais e experimentais
+soul_transfer_kit_gpt.json..rtf
+planilha.html
+agent/*.md
