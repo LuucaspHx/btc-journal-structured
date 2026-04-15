@@ -67,7 +67,7 @@ export function calcEntryPnL(entry, currentPrice) {
     return { currentValue: 0, pnlValue: 0, pnlPct: 0, isProfit: false };
   }
   const pnlValue = currentValue - fiat;
-  const pnlPct = fiat > 0 ? (pnlValue / fiat) * 100 : 0;
+  const pnlPct = fiat > 0 ? (pnlValue / fiat) * 100 : null;
   return {
     currentValue,
     pnlValue,

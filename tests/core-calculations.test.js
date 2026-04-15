@@ -63,11 +63,19 @@ describe('calcEntryPnL', () => {
     expect(result.isProfit).toBe(false);
   });
 
-  test('retorna zeros quando fiat derivado é 0', () => {
+  test('retorna zeros quando entry está vazia (sats=0 e fiat=0)', () => {
     const entry = { sats: 0, fiatAmount: 0 };
     const result = calcEntryPnL(entry, 100000);
     expect(result.currentValue).toBe(0);
     expect(result.pnlValue).toBe(0);
     expect(result.pnlPct).toBe(0);
+  });
+
+  test('retorna pnlPct null quando custo não pode ser derivado (sats>0, fiat=0)', () => {
+    const entry = { sats: 100000 }; // no fiatAmount, no fiat, no price
+    const result = calcEntryPnL(entry, 100000);
+    expect(result.currentValue).toBeCloseTo(100);
+    expect(result.pnlPct).toBeNull();
+    expect(result.isProfit).toBe(true); // pnlValue = 100 - 0 = 100 > 0
   });
 });
