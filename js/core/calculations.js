@@ -58,8 +58,26 @@ export function pmMedio(entries = []) {
   return totalFiat / totalBtc;
 }
 
+export function calcEntryPnL(entry, currentPrice) {
+  const sats = extractSats(entry);
+  const fiat = extractFiat(entry);
+  const price = toNumber(currentPrice, 0);
+  const currentValue = (sats / SATS_PER_BTC) * price;
+  if (sats === 0 && fiat === 0) {
+    return { currentValue: 0, pnlValue: 0, pnlPct: 0, isProfit: false };
+  }
+  const pnlValue = currentValue - fiat;
+  const pnlPct = fiat > 0 ? (pnlValue / fiat) * 100 : 0;
+  return {
+    currentValue,
+    pnlValue,
+    pnlPct,
+    isProfit: pnlValue > 0,
+  };
+}
+
 export const __test__ = {
   toNumber,
   extractSats,
-  extractFiat
+  extractFiat,
 };
