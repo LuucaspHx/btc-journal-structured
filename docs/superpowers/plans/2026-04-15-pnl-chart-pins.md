@@ -1044,34 +1044,68 @@ function createCoinGeckoFetcher() {
 }
 ```
 
-- [ ] **Step 4: Inicializar price-service no boot**
+- [ ] **Step 4: Criar helper granular e inicializar price-service no boot**
 
-Localizar a função `boot()` ou equivalente de inicialização. Adicionar no início do boot:
+`renderAll()` (linha 2597 de app.js) chama `renderChart()` — usar ela no listener recriaria `_chart` a cada 30s. Criar um helper que atualiza apenas tabela e stats:
+
+Adicionar antes de `renderAll()` em app.js:
+
+```js
+function renderTableAndStats(visibleTxs = getVisibleTxs()) {
+  renderTable({
+    list: visibleTxs,
+    totalCount: Array.isArray(state.txs) ? state.txs.length : 0,
+    activeFiltersCount: getActiveFiltersCount(),
+    currentPrice: priceService?.getCurrentPrice(state.vs || 'usd') ?? null,
+    currency: (state.vs || 'usd').toUpperCase(),
+    createTxStatusBadge,
+    fmtInt,
+    fmtPrice: fmtBRL
+  });
+  renderStats({
+    list: visibleTxs,
+    totalCount: Array.isArray(state.txs) ? state.txs.length : 0,
+    getLatestMarketPrice,
+    currentFiatCurrency,
+    fmtCurrency,
+    fmtSignedCurrency,
+    fmtPercent,
+    fmtInt
+  });
+}
+```
+
+Em seguida, localizar a função `boot()` e adicionar:
 
 ```js
   const vs = state.vs || 'usd';
   priceService = createPriceService({ fetcher: createCoinGeckoFetcher() });
   priceService.onPriceUpdate(() => {
-    renderAll(); // atualiza tabela e stats — NÃO recria o gráfico (renderAll não chama renderChart)
+    renderTableAndStats(); // só tabela + stats — não recria _chart
   });
   priceService.startPolling(vs);
 ```
 
-- [ ] **Step 5: Passar currentPrice e currency para renderTable**
+- [ ] **Step 5: Substituir chamadas diretas de renderTable em renderAll por renderTableAndStats**
 
-Localizar a chamada de `renderTable(...)` no app.js. Adicionar os novos parâmetros:
+`renderAll()` ainda chama `renderTable` sem os novos parâmetros. Substituir as linhas de `renderTable` e `renderStats` dentro de `renderAll()` por uma chamada ao novo helper:
 
 ```js
-  renderTable({
-    list: filtered,
-    totalCount: state.txs.length,
-    activeFiltersCount: Object.values(filterState).filter(Boolean).length,
-    currentPrice: priceService?.getCurrentPrice(state.vs || 'usd') ?? null,
-    currency: (state.vs || 'usd').toUpperCase(),
-    createTxStatusBadge,
-    fmtInt,
-    fmtPrice
+function renderAll() {
+  hydrateYearOptions();
+  const visible = getVisibleTxs();
+  renderTableAndStats(visible);   // ← substitui renderTable + renderStats separados
+  renderMonths(visible);
+  renderChart(visible);
+  renderAudit();
+  updateFiltersMeta({
+    visibleCount: visible.length,
+    totalCount: (state.txs || []).length,
+    activeCount: getActiveFiltersCount(),
+    sort: filterState.sort,
+    describeSortLabel
   });
+}
 ```
 
 - [ ] **Step 6: Integrar pins diretamente em renderChart()**
