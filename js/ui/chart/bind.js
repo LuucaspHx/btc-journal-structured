@@ -48,8 +48,6 @@ export function bindChartPins({ chart, getTxById, getCurrentPrice, getCurrency }
     openPinModal(tx, getCurrentPrice(), getCurrency());
   };
 
-  chart.update('none');
-
   const closeBtn = document.getElementById('pinModalClose');
   if (closeBtn && !closeBtn.dataset.pinListenerBound) {
     closeBtn.addEventListener('click', closePinModal);
