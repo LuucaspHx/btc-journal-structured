@@ -1052,7 +1052,7 @@ Localizar a função `boot()` ou equivalente de inicialização. Adicionar no in
   const vs = state.vs || 'usd';
   priceService = createPriceService({ fetcher: createCoinGeckoFetcher() });
   priceService.onPriceUpdate(() => {
-    renderAll(); // re-renderiza tabela e gráfico com preço novo
+    renderAll(); // atualiza tabela e stats — NÃO recria o gráfico (renderAll não chama renderChart)
   });
   priceService.startPolling(vs);
 ```
@@ -1094,19 +1094,7 @@ Localizar a chamada de `renderTable(...)` no app.js. Adicionar os novos parâmet
 
 > `bindChartPins` registra `chart.options.onClick` e os listeners de fechar modal. Como `_chart` é destruído e recriado a cada render, o bind também precisa ser repetido. Os listeners do DOM (`#pinModalClose`, `#pinModal`) devem ser registrados com `{ once: false }` e verificar duplicação — ou usar `{ once: true }` e re-registrar apenas se o modal não tiver listener ativo. O `bind.js` já cuida disso internamente verificando `#pinModal`.
 
-- [ ] **Step 7: Verificar que o price-service dispara re-render correto**
-
-O listener de `onPriceUpdate` deve chamar a função que re-renderiza a tabela, não uma função que recrie o gráfico desnecessariamente. Localizar a função de render principal (ex: `renderAll` ou `renderTableAndStats`) e usar ela no listener:
-
-```js
-  priceService.onPriceUpdate(() => {
-    renderTableAndStats(); // só tabela — chart não precisa recriar por atualização de preço
-  });
-```
-
-> Se `renderAll()` já recriar o gráfico, prefira uma função mais granular para não destruir e recriar o `_chart` a cada 30s.
-
-- [ ] **Step 8: Aplicar confirmedAt após validação de TXID**
+- [ ] **Step 7: Aplicar confirmedAt após validação de TXID**
 
 Localizar onde o app processa o resultado de `validateTxidEntry`. Adicionar após salvar o resultado de validação:
 
@@ -1116,7 +1104,7 @@ Localizar onde o app processa o resultado de `validateTxidEntry`. Adicionar apó
   }
 ```
 
-- [ ] **Step 9: Reiniciar polling quando vs muda**
+- [ ] **Step 8: Reiniciar polling quando vs muda**
 
 Localizar onde o app troca a moeda (`vs`). Adicionar:
 
@@ -1126,7 +1114,7 @@ Localizar onde o app troca a moeda (`vs`). Adicionar:
   }
 ```
 
-- [ ] **Step 10: Rodar suite completa**
+- [ ] **Step 9: Rodar suite completa**
 
 ```bash
 npm test 2>&1 | tail -15
@@ -1134,7 +1122,7 @@ npm test 2>&1 | tail -15
 
 Esperado: todos passando
 
-- [ ] **Step 11: Commit**
+- [ ] **Step 10: Commit**
 
 ```bash
 git add js/app.js

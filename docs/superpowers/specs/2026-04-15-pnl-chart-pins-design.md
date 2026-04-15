@@ -127,9 +127,9 @@ A blockchain é a fonte de verdade para a **data**. O preço histórico na data 
 
 ---
 
-## Contrato de `confirmed_at` no txid-service
+## Contrato de `confirmedAt` no txid-service
 
-`validateTxidEntry` atualmente **não retorna** `confirmed_at`. A função precisa ser expandida para extrair esse campo da resposta da mempool.space.
+`validateTxidEntry` atualmente **não retorna** `confirmedAt`. A função precisa ser expandida para extrair esse campo da resposta da mempool.space.
 
 **Origem:** `txData.status.block_time` — Unix timestamp (segundos) presente na resposta quando `txData.status.confirmed === true`.
 
