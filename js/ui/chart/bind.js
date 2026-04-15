@@ -1,6 +1,5 @@
 import { buildPinModalData } from './helpers.js';
 import { formatCurrentValue, formatPnL } from '../table/helpers.js';
-import { PIN_DATASET_LABEL } from './render.js';
 
 function openPinModal(tx, currentPrice, currency = 'USD') {
   const data = buildPinModalData(tx, currentPrice);
@@ -39,14 +38,14 @@ export function bindChartPins({ chart, getTxById, getCurrentPrice, getCurrency }
     if (!elements || elements.length === 0) return;
     const el = elements[0];
     const dataset = chart.data.datasets[el.datasetIndex];
-    if (!dataset || dataset.label !== PIN_DATASET_LABEL) return;
+    if (!dataset) return;
     const point = dataset.data[el.index];
-    if (!point?.txId) return;
-    const tx = getTxById(point.txId);
+    // suporta dataset "Entradas" (.id) e dataset de pins legado (.txId)
+    const txId = point?.id ?? point?.txId;
+    if (!txId) return;
+    const tx = getTxById(txId);
     if (!tx) return;
-    const price = getCurrentPrice();
-    const currency = getCurrency();
-    openPinModal(tx, price, currency);
+    openPinModal(tx, getCurrentPrice(), getCurrency());
   };
 
   chart.update('none');

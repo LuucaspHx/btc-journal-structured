@@ -51,7 +51,6 @@ import {
   renderImportPreview,
 } from './ui/import-export/render.js';
 import { createPriceService } from './services/price-service.js';
-import { updatePinsDataset } from './ui/chart/render.js';
 import { bindChartPins } from './ui/chart/bind.js';
 
 const LS_KEY = 'btc_journal_state_v3';
@@ -2830,8 +2829,7 @@ function renderChart(visibleTxs = getVisibleTxs()) {
   } catch (e) {
     /* ignore in strict CSP env */
   }
-  // Pins: dataset e bind na nova instância
-  updatePinsDataset(_chart, state.txs);
+  // Clique nos pontos do dataset "Entradas" (já filtrado por series.chartTxs)
   bindChartPins({
     chart: _chart,
     getTxById: (id) => state.txs.find((tx) => tx.id === id),
