@@ -114,6 +114,7 @@ function createCoinGeckoFetcher() {
   return async function (vs) {
     const url = `https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=${vs}`;
     const res = await fetch(url);
+    if (!res.ok) return null;
     const json = await res.json();
     return json?.bitcoin?.[vs] ?? null;
   };
@@ -2860,6 +2861,7 @@ function renderChart(visibleTxs = getVisibleTxs()) {
   updateLegend(series.points, chartCounts);
 }
 
+// Atualiza tabela + stats sem recriar o gráfico — usado pelo price-service listener
 function renderTableAndStats(visibleTxs = getVisibleTxs()) {
   renderTable({
     list: visibleTxs,
