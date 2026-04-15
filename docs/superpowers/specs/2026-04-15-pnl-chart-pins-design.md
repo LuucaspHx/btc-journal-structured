@@ -55,11 +55,15 @@ calcEntryPnL(entry, currentPrice)
 
 **Lógica de cálculo:**
 ```
-valor atual = (entry.sats / 1e8) * currentPrice
-pnl $       = valor atual - entry.fiatAmount
-pnl %       = (pnl $ / entry.fiatAmount) * 100
+sats        = extractSats(entry)   // já existe em calculations.js: sats → btcAmount → amountBtc
+fiat        = extractFiat(entry)   // já existe em calculations.js: fiatAmount → fiat → derivado de price*sats
+valor atual = (sats / 1e8) * currentPrice
+pnl $       = valor atual - fiat
+pnl %       = (pnl $ / fiat) * 100
 isProfit    = pnl $ > 0  (qualquer centavo positivo = verde)
 ```
+
+`calcEntryPnL` usa as funções internas `extractSats` e `extractFiat` já presentes em `calculations.js` — não acessa campos do entry diretamente, para respeitar o shape híbrido do estado real.
 
 > Formatação para exibição fica em `js/ui/table/helpers.js` — core calcula, UI formata.
 
@@ -123,14 +127,33 @@ A blockchain é a fonte de verdade para a **data**. O preço histórico na data 
 
 ---
 
+## Contrato de `confirmed_at` no txid-service
+
+`validateTxidEntry` atualmente **não retorna** `confirmed_at`. A função precisa ser expandida para extrair esse campo da resposta da mempool.space.
+
+**Origem:** `txData.status.block_time` — Unix timestamp (segundos) presente na resposta quando `txData.status.confirmed === true`.
+
+**Formato retornado:** string ISO date `"YYYY-MM-DD"`, derivada de `new Date(block_time * 1000).toISOString().slice(0, 10)`.
+
+**Adição ao retorno de `validateTxidEntry`:**
+```js
+confirmedAt: txData.status.confirmed
+  ? new Date(txData.status.block_time * 1000).toISOString().slice(0, 10)
+  : null
+```
+
+Só presente quando `status === TXID_STATUS.CONFIRMED`. Nos demais casos, `confirmedAt: null`.
+
+---
+
 ## Dados que o TXID provê (via mempool.space)
 
-| Campo | Uso |
-|---|---|
-| `confirmed_at` | Sobrescreve `entry.date` |
-| `confirmations` | Exibido na auditoria |
-| `fee` (sats) | Disponível para exibição futura |
-| `block_height` | Referência interna |
+| Campo on-chain | Mapeamento | Uso |
+|---|---|---|
+| `status.block_time` | → `confirmedAt` (ISO date) | Sobrescreve `entry.date` |
+| calculado via `block_height` | → `confirmations` | Já retornado — exibido na auditoria |
+| `fee` (sats, soma dos inputs − outputs) | → `fee` | Disponível para exibição futura |
+| `status.block_height` | → `block_height` | Referência interna |
 
 ---
 
@@ -139,13 +162,16 @@ A blockchain é a fonte de verdade para a **data**. O preço histórico na data 
 | Arquivo | Ação |
 |---|---|
 | `js/services/price-service.js` | Criar |
-| `js/core/calculations.js` | Adicionar `calcEntryPnL` |
+| `js/core/calculations.js` | Adicionar `calcEntryPnL` (usa `extractSats`/`extractFiat` internos) |
 | `js/ui/table/render.js` | Adicionar coluna P&L |
 | `js/ui/table/helpers.js` | Helpers de formatação de P&L e apresentação financeira |
-| `js/app.js` | Integrar `price-service`, passar preço para tabela e gráfico |
-| `js/services/txid-service.js` | Extrair e retornar `confirmed_at` |
-| `css/style.css` | Estilos da coluna P&L e modal |
-| `tests/` | Testes para `price-service` e `calcEntryPnL` |
+| `js/ui/chart/render.js` | Criar — dataset de alfinetes, posicionamento dos pontos |
+| `js/ui/chart/bind.js` | Criar — evento de clique no alfinete, abertura do modal |
+| `js/ui/chart/helpers.js` | Criar — formatação dos dados para o modal |
+| `js/app.js` | Integrar `price-service`, inicializar `js/ui/chart/bind.js` |
+| `js/services/txid-service.js` | Adicionar `confirmedAt` ao retorno de `validateTxidEntry` |
+| `css/style.css` | Estilos da coluna P&L e modal de alfinete |
+| `tests/` | Testes para `price-service`, `calcEntryPnL` e `txid-service` (confirmedAt) |
 
 ---
 
