@@ -2535,12 +2535,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function boot() {
   loadState();
-  const vs = state.vs || 'usd';
+  // price-service como cache passivo — alimentado pelo refreshLivePrice existente (60s)
   priceService = createPriceService({ fetcher: createCoinGeckoFetcher() });
-  priceService.onPriceUpdate(() => {
-    renderTableAndStats(); // só tabela + stats — não recria _chart
-  });
-  priceService.startPolling(vs);
   hydrateChartMode();
   // tentar detectar e migrar dados antigos (btcJournalV1)
   detectAndOfferMigration();
@@ -2859,13 +2855,18 @@ function renderChart(visibleTxs = getVisibleTxs()) {
   updateLegend(series.points, chartCounts);
 }
 
-// Atualiza tabela + stats sem recriar o gráfico — usado pelo price-service listener
-function renderTableAndStats(visibleTxs = getVisibleTxs()) {
+// Atualiza tabela + stats sem recriar o gráfico
+// currentPriceOverride: preço direto do refreshLivePrice (sem chamada extra à API)
+function renderTableAndStats(visibleTxs = getVisibleTxs(), currentPriceOverride) {
+  const currentPrice =
+    currentPriceOverride != null
+      ? currentPriceOverride
+      : (priceService?.getCurrentPrice(state.vs || 'usd') ?? null);
   renderTable({
     list: visibleTxs,
     totalCount: Array.isArray(state.txs) ? state.txs.length : 0,
     activeFiltersCount: getActiveFiltersCount(),
-    currentPrice: priceService?.getCurrentPrice(state.vs || 'usd') ?? null,
+    currentPrice,
     currency: (state.vs || 'usd').toUpperCase(),
     createTxStatusBadge,
     fmtInt,
@@ -2992,9 +2993,6 @@ try {
 document.addEventListener('change', async (e) => {
   if (e.target && e.target.id === 'vsCurrency') {
     state.vs = e.target.value;
-    if (priceService) {
-      priceService.startPolling(state.vs || 'usd');
-    }
     await fetchPrices(90);
     if (document.getElementById('chartMode')?.value === 'candles') await fetchOHLC(90);
     renderChart();
@@ -3141,6 +3139,8 @@ async function refreshLivePrice() {
   try {
     const p = await fetchLivePrice(vs);
     const arr = pushLivePrice(p);
+    // atualizar P&L da tabela com o preço recém-obtido (sem chamada extra à API)
+    renderTableAndStats(undefined, p.price);
     // atualizar chart
     if (!_liveChart) initLiveChart();
     const labels = arr.map((x) => new Date(x.time));
