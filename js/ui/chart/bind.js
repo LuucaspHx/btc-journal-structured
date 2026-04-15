@@ -16,10 +16,9 @@ function openPinModal(tx, currentPrice, currency = 'USD') {
   set('pinModalSats', data.sats.toLocaleString('pt-BR') + ' sats');
   set('pinModalCost', formatCurrentValue(data.costFiat, currency));
   set('pinModalCurrent', fmt.valueText);
-  set('pinModalPnl', `${fmt.sign} ${fmt.pctText}`);
-
   const pnlEl = document.getElementById('pinModalPnl');
   if (pnlEl) {
+    pnlEl.textContent = `${fmt.sign} ${fmt.pctText}`;
     pnlEl.classList.toggle('profit', data.pnlValue > 0);
     pnlEl.classList.toggle('loss', data.pnlValue < 0);
   }

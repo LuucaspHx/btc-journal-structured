@@ -1,6 +1,6 @@
 import { buildPinDataset } from './helpers.js';
 
-const PIN_DATASET_LABEL = '__btc_pins__';
+export const PIN_DATASET_LABEL = '__btc_pins__';
 
 export function buildPinsChartDataset(txs = []) {
   const points = buildPinDataset(txs);
@@ -39,5 +39,3 @@ export function removePinsDataset(chart) {
     chart.update('none');
   }
 }
-
-export { PIN_DATASET_LABEL };
