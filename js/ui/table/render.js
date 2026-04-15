@@ -105,9 +105,9 @@ export function renderTable({
       const fmt = formatPnL(pnlData, currency);
       const valueEl = document.createElement('span');
       valueEl.className = 'pnl-value';
-      valueEl.textContent = formatCurrentValue(pnlData.currentValue, currency);
+      valueEl.textContent = fmt.valueText;
       const pctEl = document.createElement('span');
-      pctEl.className = `pnl-pct ${pnlData.isProfit ? 'pnl-profit' : 'pnl-loss'}`;
+      pctEl.className = `pnl-pct ${pnlData.pnlValue > 0 ? 'pnl-profit' : pnlData.pnlValue < 0 ? 'pnl-loss' : 'pnl-neutral'}`;
       pctEl.textContent = `${fmt.sign} ${fmt.pctText}`;
       tdPnl.appendChild(valueEl);
       tdPnl.appendChild(pctEl);

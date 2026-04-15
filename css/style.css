@@ -452,4 +452,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica N
 .pnl-loss {
   color: #ef4444;
 }
+
+.pnl-neutral {
+  color: var(--text-muted, #888);
+}
+
 .glass-card, .glass-card .note, .glass-card .muted { color: var(--text); }
