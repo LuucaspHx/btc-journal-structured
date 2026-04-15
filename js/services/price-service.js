@@ -30,8 +30,8 @@ export function createPriceService({ fetcher, intervalMs = DEFAULT_INTERVAL_MS }
       if (pollingTimer !== null && currentVs === vs) return;
       if (pollingTimer !== null) clearInterval(pollingTimer);
       currentVs = vs;
-      doFetch(vs);
       pollingTimer = setInterval(() => doFetch(vs), intervalMs);
+      return doFetch(vs);
     },
 
     stopPolling() {

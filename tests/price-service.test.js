@@ -30,7 +30,6 @@ describe('price-service', () => {
   });
 
   test('cache por moeda — usd e brl são independentes', async () => {
-    let call = 0;
     service = createPriceService({ fetcher: async (vs) => vs === 'usd' ? 50000 : 300000 });
     await service.fetchNow('usd');
     await service.fetchNow('brl');
@@ -59,5 +58,14 @@ describe('price-service', () => {
     shouldFail = true;
     await service.fetchNow('usd');
     expect(service.getCurrentPrice('usd')).toBe(50000);
+  });
+
+  test('startPolling troca de moeda — cancela timer anterior e inicia para nova moeda', async () => {
+    service = createPriceService({ fetcher: async (vs) => vs === 'usd' ? 50000 : 300000 });
+    await service.startPolling('usd');
+    expect(service.getCurrentPrice('usd')).toBe(50000);
+    await service.startPolling('brl');
+    expect(service.getCurrentPrice('brl')).toBe(300000);
+    expect(service.getCurrentPrice('usd')).toBe(50000); // usd permanece em cache
   });
 });
