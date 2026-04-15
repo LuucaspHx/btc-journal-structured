@@ -93,7 +93,7 @@ $ 61,20    ▼ -23,5%    ← vermelho
 
 **Implementação com Chart.js:**
 - Dataset extra "aportes" sobreposto ao gráfico de preço histórico
-- Cada ponto posicionado em `x = data do aporte`, `y = entry.btcPrice` (preço já salvo no aporte)
+- Cada ponto posicionado em `x = data do aporte`, `y = getTxPrice(tx)` (preço canônico via getter: `btcPrice → price → 0`)
 - Não haverá busca adicional de preço histórico nesta subfase
 - Estilo: círculo com borda branca, preenchimento neutro (discreto, não polui o gráfico)
 
@@ -118,10 +118,10 @@ $ 61,20    ▼ -23,5%    ← vermelho
 
 Quando um TXID é validado com sucesso via `txid-service.js`:
 
-- O campo `confirmed_at` (timestamp do bloco) sobrescreve `entry.date`
+- O campo `confirmedAt` (retornado por `validateTxidEntry`) sobrescreve `entry.date`
 - O alfinete no gráfico se move no eixo X para a data on-chain
 - A data exibida na tabela e no modal passa a ser a data on-chain
-- O eixo Y do alfinete continua baseado no `entry.btcPrice` já salvo nesta subfase
+- O eixo Y do alfinete continua baseado em `getTxPrice(tx)` nesta subfase
 
 A blockchain é a fonte de verdade para a **data**. O preço histórico na data on-chain é fora de escopo por ora.
 

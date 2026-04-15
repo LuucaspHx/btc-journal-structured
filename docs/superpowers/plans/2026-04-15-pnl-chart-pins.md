@@ -1019,14 +1019,15 @@ import { updatePinsDataset } from './ui/chart/render.js';
 import { bindChartPins } from './ui/chart/bind.js';
 ```
 
-- [ ] **Step 2: Instanciar o price-service após as declarações de variáveis**
+- [ ] **Step 2: Declarar priceService após as declarações de variáveis**
 
-Após a linha `let priceSeriesMeta = null;` (por volta da linha 80), adicionar:
+Após a linha `let _chart = null;` (linha 2548), adicionar:
 
 ```js
 let priceService = null;
-let chartInstance = null; // referência ao objeto Chart ativo
 ```
+
+> Não criar uma variável `chartInstance` paralela. O gráfico real é `_chart`, recriado a cada `renderChart()`. Os pins devem sempre operar sobre `_chart` diretamente.
 
 - [ ] **Step 3: Criar a função getCoinGeckoPrice que o price-service usará**
 
@@ -1073,29 +1074,37 @@ Localizar a chamada de `renderTable(...)` no app.js. Adicionar os novos parâmet
   });
 ```
 
-- [ ] **Step 6: Salvar referência ao chart e inicializar pins**
+- [ ] **Step 6: Integrar pins diretamente em renderChart()**
 
-Localizar onde o Chart.js é instanciado (procurar por `new Chart(`). Salvar a referência e chamar bind:
+`renderChart()` destrói e recria `_chart` a cada chamada (linha 2576-2577 de app.js). Por isso, os pins devem ser adicionados **dentro de `renderChart()`**, logo após a linha `_chart = new Chart(canvas.getContext('2d'), cfg);`:
 
 ```js
-  chartInstance = new Chart(ctx, config);
+  _chart = new Chart(canvas.getContext('2d'), cfg);
+  try { window.btcChart = _chart; } catch (e) { /* ignore in strict CSP env */ }
+
+  // Pins: adicionar dataset e bind na nova instância
+  updatePinsDataset(_chart, state.txs);
   bindChartPins({
-    chart: chartInstance,
+    chart: _chart,
     getTxById: (id) => state.txs.find(tx => tx.id === id),
     getCurrentPrice: () => priceService?.getCurrentPrice(state.vs || 'usd') ?? null,
     getCurrency: () => (state.vs || 'usd').toUpperCase()
   });
 ```
 
-- [ ] **Step 7: Atualizar pins ao renderizar o gráfico**
+> `bindChartPins` registra `chart.options.onClick` e os listeners de fechar modal. Como `_chart` é destruído e recriado a cada render, o bind também precisa ser repetido. Os listeners do DOM (`#pinModalClose`, `#pinModal`) devem ser registrados com `{ once: false }` e verificar duplicação — ou usar `{ once: true }` e re-registrar apenas se o modal não tiver listener ativo. O `bind.js` já cuida disso internamente verificando `#pinModal`.
 
-Após cada `chart.update()` ou re-render do gráfico, adicionar:
+- [ ] **Step 7: Verificar que o price-service dispara re-render correto**
+
+O listener de `onPriceUpdate` deve chamar a função que re-renderiza a tabela, não uma função que recrie o gráfico desnecessariamente. Localizar a função de render principal (ex: `renderAll` ou `renderTableAndStats`) e usar ela no listener:
 
 ```js
-  if (chartInstance) {
-    updatePinsDataset(chartInstance, state.txs);
-  }
+  priceService.onPriceUpdate(() => {
+    renderTableAndStats(); // só tabela — chart não precisa recriar por atualização de preço
+  });
 ```
+
+> Se `renderAll()` já recriar o gráfico, prefira uma função mais granular para não destruir e recriar o `_chart` a cada 30s.
 
 - [ ] **Step 8: Aplicar confirmedAt após validação de TXID**
 
