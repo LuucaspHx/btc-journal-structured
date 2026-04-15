@@ -458,3 +458,62 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica N
 }
 
 .glass-card, .glass-card .note, .glass-card .muted { color: var(--text); }
+
+/* Pin modal */
+#pinModal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.5);
+}
+
+#pinModal.open {
+  display: flex;
+}
+
+.pin-modal-box {
+  background: var(--bg-card, #1a1a2e);
+  border: 1px solid var(--border, #333);
+  border-radius: 12px;
+  padding: 24px 28px;
+  min-width: 260px;
+  max-width: 340px;
+  font-family: monospace;
+}
+
+.pin-modal-box h3 {
+  margin: 0 0 16px;
+  font-size: 1rem;
+  color: var(--text, #eee);
+}
+
+.pin-modal-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  font-size: 0.88rem;
+  color: var(--text-muted, #aaa);
+}
+
+.pin-modal-row .pin-modal-val {
+  color: var(--text, #eee);
+  font-weight: 600;
+}
+
+.pin-modal-pnl.profit { color: #22c55e; }
+.pin-modal-pnl.loss   { color: #ef4444; }
+
+.pin-modal-close {
+  margin-top: 16px;
+  width: 100%;
+  padding: 8px;
+  cursor: pointer;
+  border-radius: 6px;
+  border: 1px solid var(--border, #333);
+  background: transparent;
+  color: var(--text-muted, #aaa);
+  font-size: 0.85rem;
+}
