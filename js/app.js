@@ -479,6 +479,8 @@ function updateFormModeUI(isEditing) {
   if (submitBtn) submitBtn.textContent = isEditing ? 'Guardar alterações' : 'Adicionar';
   const cancelBtn = document.getElementById('tx-cancel-edit');
   if (cancelBtn) cancelBtn.style.display = isEditing ? 'inline-flex' : 'none';
+  const deleteBtn = document.getElementById('tx-delete-edit');
+  if (deleteBtn) deleteBtn.style.display = isEditing ? 'inline-flex' : 'none';
 }
 
 function populateFormWithEntry(entry = null) {
@@ -1632,6 +1634,13 @@ function bindForm() {
   if (cancelBtn && !cancelBtn.dataset.bound) {
     cancelBtn.dataset.bound = 'true';
     cancelBtn.addEventListener('click', () => cancelEditTransaction());
+  }
+  const deleteEditBtn = document.getElementById('tx-delete-edit');
+  if (deleteEditBtn && !deleteEditBtn.dataset.bound) {
+    deleteEditBtn.dataset.bound = 'true';
+    deleteEditBtn.addEventListener('click', () => {
+      if (editingTxId) deleteTransactionById(editingTxId);
+    });
   }
   updateFormModeUI(Boolean(editingTxId));
   form.addEventListener('submit', (e) => {
