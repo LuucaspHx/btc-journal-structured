@@ -95,6 +95,7 @@ let priceSeriesMeta = null;
 let ohlcSeriesMeta = null;
 let lastFailedPriceMeta = null;
 let lastFailedOhlcMeta = null;
+let lastPriceFetchIssue = null;
 const TXID_STATUS_TONES = {
   manual: 'muted',
   pending: 'info',
@@ -109,13 +110,259 @@ const AUTO_VALIDATE_STATUSES = new Set([
   TXID_STATUS.INCONCLUSIVE,
 ]);
 
+function createRemoteFetchError(source, kind, message, extra = {}) {
+  const err = new Error(message);
+  err.source = source;
+  err.kind = kind;
+  Object.assign(err, extra);
+  return err;
+}
+
+function normalizeRemoteFetchError(source, error) {
+  if (error?.kind) return error;
+  const status = Number(error?.status);
+  const message = String(error?.message || '');
+  if (status === 429 || /\b429\b/.test(message)) {
+    return createRemoteFetchError(source, 'rate_limit', `${source} rate limited`, { status: 429 });
+  }
+  if (
+    error instanceof TypeError ||
+    /Failed to fetch|Load failed|NetworkError|Network request failed|fetch/i.test(message)
+  ) {
+    return createRemoteFetchError(source, 'network_or_cors', `${source} blocked by network/CORS`, {
+      cause: error,
+    });
+  }
+  if (Number.isFinite(status) && status >= 400) {
+    return createRemoteFetchError(source, 'http_error', `${source} HTTP ${status}`, { status });
+  }
+  return createRemoteFetchError(source, 'unknown', `${source} failed`, { cause: error });
+}
+
+async function fetchJsonOrThrow(url, { source } = {}) {
+  let res;
+  try {
+    res = await fetch(url);
+  } catch (error) {
+    throw normalizeRemoteFetchError(source || 'remote', error);
+  }
+  if (!res.ok) {
+    throw normalizeRemoteFetchError(
+      source || 'remote',
+      createRemoteFetchError(
+        source || 'remote',
+        'http_error',
+        `${source || 'remote'} HTTP ${res.status}`,
+        {
+          status: res.status,
+        }
+      )
+    );
+  }
+  try {
+    return await res.json();
+  } catch (error) {
+    throw createRemoteFetchError(
+      source || 'remote',
+      'invalid_json',
+      `${source || 'remote'} returned invalid JSON`,
+      { cause: error }
+    );
+  }
+}
+
+function normalizeHistoryQuery(rangeOrDays = 90) {
+  const usingRange =
+    rangeOrDays &&
+    typeof rangeOrDays === 'object' &&
+    Number.isFinite(rangeOrDays.min) &&
+    Number.isFinite(rangeOrDays.max);
+  if (usingRange) {
+    const range = ensureChartRange(rangeOrDays);
+    const limit = Math.max(1, Math.min(2000, Math.ceil((range.max - range.min) / DAY_MS) + 2));
+    return { usingRange: true, range, limit, toTs: Math.floor(range.max / 1000) };
+  }
+  const days = Math.max(1, Math.min(2000, Math.floor(Number(rangeOrDays) || 90)));
+  return { usingRange: false, range: null, limit: days, toTs: null };
+}
+
+async function fetchCurrentPriceFromCoinGecko(vs) {
+  const json = await fetchJsonOrThrow(
+    `https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=${vs}`,
+    { source: 'CoinGecko current price' }
+  );
+  const price = Number(json?.bitcoin?.[vs]);
+  if (!Number.isFinite(price)) {
+    throw createRemoteFetchError(
+      'CoinGecko current price',
+      'invalid_payload',
+      'CoinGecko returned an invalid current price payload'
+    );
+  }
+  return price;
+}
+
+async function fetchCurrentPriceFromCryptoCompare(vs) {
+  const tsym = String(vs || 'USD').toUpperCase();
+  const json = await fetchJsonOrThrow(
+    `https://min-api.cryptocompare.com/data/price?fsym=BTC&tsyms=${tsym}&extraParams=btc_journal_structured`,
+    { source: 'CryptoCompare current price' }
+  );
+  const price = Number(json?.[tsym]);
+  if (!Number.isFinite(price)) {
+    throw createRemoteFetchError(
+      'CryptoCompare current price',
+      'invalid_payload',
+      'CryptoCompare returned an invalid current price payload'
+    );
+  }
+  return price;
+}
+
+async function fetchCurrentPriceValue(vs = 'usd') {
+  const normalizedVs = String(vs || 'usd').toLowerCase();
+  try {
+    return await fetchCurrentPriceFromCoinGecko(normalizedVs);
+  } catch (coinGeckoError) {
+    console.warn(
+      'CoinGecko current price failed, trying CryptoCompare',
+      normalizeRemoteFetchError('CoinGecko current price', coinGeckoError)
+    );
+    try {
+      return await fetchCurrentPriceFromCryptoCompare(normalizedVs);
+    } catch (cryptoCompareError) {
+      if (normalizedVs !== 'usd') {
+        throw normalizeRemoteFetchError('CryptoCompare current price', cryptoCompareError);
+      }
+      console.warn(
+        'CryptoCompare current price failed, trying CoinDesk',
+        normalizeRemoteFetchError('CryptoCompare current price', cryptoCompareError)
+      );
+      const json = await fetchJsonOrThrow('https://api.coindesk.com/v1/bpi/currentprice.json', {
+        source: 'CoinDesk current price',
+      });
+      const price = Number(json?.bpi?.USD?.rate_float);
+      if (!Number.isFinite(price)) {
+        throw createRemoteFetchError(
+          'CoinDesk current price',
+          'invalid_payload',
+          'CoinDesk returned an invalid current price payload'
+        );
+      }
+      return price;
+    }
+  }
+}
+
+async function fetchHistoricalPricesFromCoinGecko(rangeOrDays = 90, vs = 'usd') {
+  const query = normalizeHistoryQuery(rangeOrDays);
+  const endpoint = query.usingRange
+    ? `https://api.coingecko.com/api/v3/coins/bitcoin/market_chart/range?vs_currency=${vs}&from=${Math.floor(query.range.min / 1000)}&to=${Math.floor(query.range.max / 1000)}`
+    : `https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=${vs}&days=${query.limit}`;
+  const json = await fetchJsonOrThrow(endpoint, { source: 'CoinGecko historical prices' });
+  return (json?.prices || [])
+    .map((point) => ({ t: Number(point?.[0]), p: Number(point?.[1]) }))
+    .filter((point) => Number.isFinite(point.t) && Number.isFinite(point.p));
+}
+
+async function fetchHistoricalPricesFromCryptoCompare(rangeOrDays = 90, vs = 'usd') {
+  const query = normalizeHistoryQuery(rangeOrDays);
+  const tsym = String(vs || 'USD').toUpperCase();
+  const params = new window.URLSearchParams({
+    fsym: 'BTC',
+    tsym,
+    limit: String(query.limit),
+    extraParams: 'btc_journal_structured',
+  });
+  if (Number.isFinite(query.toTs)) params.set('toTs', String(query.toTs));
+  const json = await fetchJsonOrThrow(
+    `https://min-api.cryptocompare.com/data/v2/histoday?${params.toString()}`,
+    { source: 'CryptoCompare historical prices' }
+  );
+  const arr = (json?.Data?.Data || [])
+    .map((point) => ({ t: Number(point?.time) * 1000, p: Number(point?.close) }))
+    .filter((point) => Number.isFinite(point.t) && Number.isFinite(point.p) && point.p > 0);
+  if (!query.usingRange) return arr;
+  return arr.filter((point) => point.t >= query.range.min && point.t <= query.range.max);
+}
+
+function resolvePriceFetchIssue(issue, vs = resolvedVsCurrencyLower()) {
+  const rootIssue = issue?.primaryIssue || issue;
+  const currency = String(vs || 'usd').toUpperCase();
+  if (rootIssue?.kind === 'rate_limit') {
+    return {
+      title: 'CoinGecko limitou a consulta histórica (429)',
+      detail: `O browser ficou sem série BTC/${currency}. O app tentou um fallback, mas não conseguiu fechar a série válida.`,
+    };
+  }
+  if (rootIssue?.kind === 'network_or_cors') {
+    return {
+      title: 'O browser bloqueou a consulta de preços',
+      detail: `Falha de rede/CORS ao buscar BTC/${currency}. O gráfico foi abortado sem série inválida.`,
+    };
+  }
+  if (rootIssue?.source === 'CryptoCompare historical prices') {
+    return {
+      title: 'O fallback histórico também falhou',
+      detail: `Nem CoinGecko nem CryptoCompare devolveram uma série BTC/${currency} utilizável para este período.`,
+    };
+  }
+  return {
+    title: 'Sem série histórica válida para o gráfico',
+    detail: `O app não conseguiu carregar BTC/${currency} para o período selecionado.`,
+  };
+}
+
+function setChartEmptyState(title, detail = '') {
+  const container = document.getElementById('chartContainer');
+  const panel = document.getElementById('chartEmptyState');
+  const legend = document.getElementById('chartLegend');
+  if (!container || !panel) return;
+  container.classList.add('is-empty');
+  panel.hidden = false;
+  panel.innerHTML = '';
+  const wrapper = document.createElement('div');
+  const strong = document.createElement('strong');
+  strong.textContent = title;
+  wrapper.appendChild(strong);
+  if (detail) {
+    const detailEl = document.createElement('span');
+    detailEl.textContent = detail;
+    wrapper.appendChild(detailEl);
+  }
+  panel.appendChild(wrapper);
+  if (legend) legend.textContent = detail || title;
+}
+
+function clearChartEmptyState() {
+  const container = document.getElementById('chartContainer');
+  const panel = document.getElementById('chartEmptyState');
+  if (container) container.classList.remove('is-empty');
+  if (panel) {
+    panel.hidden = true;
+    panel.innerHTML = '';
+  }
+}
+
+function destroyMainChartInstance() {
+  if (_chart) {
+    try {
+      _chart.destroy();
+    } catch (e) {
+      /* noop */
+    }
+    _chart = null;
+  }
+  try {
+    window.btcChart = null;
+  } catch (e) {
+    /* ignore */
+  }
+}
+
 function createCoinGeckoFetcher() {
   return async function (vs) {
-    const url = `https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=${vs}`;
-    const res = await fetch(url);
-    if (!res.ok) return null;
-    const json = await res.json();
-    return json?.bitcoin?.[vs] ?? null;
+    return fetchCurrentPriceValue(vs);
   };
 }
 
@@ -401,12 +648,15 @@ function schedulePriceSeriesFetch(range, vs, callback) {
       _fetchingPrices = false;
       _pricesFetchFailed = false;
       lastFailedPriceMeta = null;
+      lastPriceFetchIssue = null;
       if (typeof callback === 'function') callback();
     })
-    .catch(() => {
+    .catch((error) => {
       _fetchingPrices = false;
       _pricesFetchFailed = true;
       lastFailedPriceMeta = { range: cloneRange(range), vs };
+      lastPriceFetchIssue = error;
+      if (typeof callback === 'function') callback();
     });
 }
 
@@ -2798,32 +3048,59 @@ async function fetchPrices(rangeOrDays = 90, vsOverride) {
       : 'A carregar preços históricos…'
   );
   try {
-    let endpoint = '';
-    if (usingRange) {
-      const fromSec = Math.floor(rangeOrDays.min / 1000);
-      const toSec = Math.floor(rangeOrDays.max / 1000);
-      endpoint = `https://api.coingecko.com/api/v3/coins/bitcoin/market_chart/range?vs_currency=${vs}&from=${fromSec}&to=${toSec}`;
-    } else {
-      const days = typeof rangeOrDays === 'number' && rangeOrDays > 0 ? rangeOrDays : 90;
-      endpoint = `https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=${vs}&days=${days}`;
+    let arr = [];
+    let source = 'coingecko';
+    try {
+      arr = await fetchHistoricalPricesFromCoinGecko(rangeOrDays, vs);
+    } catch (coinGeckoError) {
+      const primaryIssue = normalizeRemoteFetchError('CoinGecko historical prices', coinGeckoError);
+      console.warn('CoinGecko historical prices failed, trying CryptoCompare', primaryIssue);
+      try {
+        arr = await fetchHistoricalPricesFromCryptoCompare(rangeOrDays, vs);
+        source = 'cryptocompare';
+      } catch (cryptoCompareError) {
+        throw createRemoteFetchError(
+          'Historical price pipeline',
+          'unavailable',
+          'Historical price pipeline failed',
+          {
+            primaryIssue,
+            fallbackIssue: normalizeRemoteFetchError(
+              'CryptoCompare historical prices',
+              cryptoCompareError
+            ),
+          }
+        );
+      }
     }
-    const res = await fetch(endpoint);
-    if (!res.ok) throw new Error('Erro ao buscar preços');
-    const json = await res.json();
-    // json.prices => [ [timestamp, price], ... ]
-    const arr = (json.prices || []).map((p) => ({ t: p[0], p: p[1] }));
-    // guardar temporariamente no state
+    if (!Array.isArray(arr) || arr.length === 0) {
+      throw createRemoteFetchError(
+        source === 'cryptocompare'
+          ? 'CryptoCompare historical prices'
+          : 'CoinGecko historical prices',
+        'empty_series',
+        'Historical provider returned an empty series'
+      );
+    }
     state.prices = arr;
     priceSeriesMeta = usingRange
-      ? { range: cloneRange(rangeOrDays), vs }
-      : { range: null, vs, days: typeof rangeOrDays === 'number' ? rangeOrDays : null };
+      ? { range: cloneRange(rangeOrDays), vs, source }
+      : { range: null, vs, days: typeof rangeOrDays === 'number' ? rangeOrDays : null, source };
     _pricesFetchFailed = false;
+    lastPriceFetchIssue = null;
     return arr;
   } catch (err) {
-    console.error('fetchPrices error', err);
-    showMessage('Erro ao obter preços históricos.', 'warn');
+    const issue =
+      err?.primaryIssue || err?.fallbackIssue
+        ? err
+        : normalizeRemoteFetchError('Historical price pipeline', err);
+    lastPriceFetchIssue = issue;
+    state.prices = [];
+    priceSeriesMeta = null;
+    console.error('fetchPrices error', issue);
+    showMessage(resolvePriceFetchIssue(issue, vs).title, 'warn');
     _pricesFetchFailed = true;
-    return [];
+    throw issue;
   } finally {
     hideLoading();
   }
@@ -2895,6 +3172,21 @@ function renderChart(visibleTxs = getVisibleTxs()) {
   const vs = resolvedVsCurrencyLower();
   if (shouldRefreshPriceSeries(fetchRange, vs)) {
     schedulePriceSeriesFetch(fetchRange, vs, () => renderChart());
+    if (
+      _pricesFetchFailed &&
+      lastFailedPriceMeta &&
+      lastFailedPriceMeta.vs === vs &&
+      rangesRoughlyMatch(lastFailedPriceMeta.range, fetchRange)
+    ) {
+      destroyMainChartInstance();
+      const issue = resolvePriceFetchIssue(lastPriceFetchIssue, vs);
+      setChartEmptyState(issue.title, issue.detail);
+    } else if (!Array.isArray(state.prices) || state.prices.length === 0) {
+      setChartEmptyState(
+        'A carregar série histórica BTC…',
+        `A pedir BTC/${vs.toUpperCase()} ao provedor de preços.`
+      );
+    }
     return;
   }
   if (getChartMode() === 'candles' && shouldRefreshOhlc(fetchRange, vs)) {
@@ -2908,6 +3200,16 @@ function renderChart(visibleTxs = getVisibleTxs()) {
     allowAnnotation: true,
     addAverageDataset: true,
   });
+  const hasPriceSeries =
+    Array.isArray(cfg?.data?.datasets?.[0]?.data) && cfg.data.datasets[0].data.length > 0;
+  if (!hasPriceSeries) {
+    destroyMainChartInstance();
+    const issue = resolvePriceFetchIssue(lastPriceFetchIssue, vs);
+    setChartEmptyState(issue.title, issue.detail);
+    return;
+  }
+
+  clearChartEmptyState();
 
   if (_chart)
     try {
@@ -3087,7 +3389,11 @@ try {
 document.addEventListener('change', async (e) => {
   if (e.target && e.target.id === 'vsCurrency') {
     state.vs = e.target.value;
-    await fetchPrices(90);
+    try {
+      await fetchPrices(expandRange(ensureChartRange()), state.vs);
+    } catch (error) {
+      console.warn('Currency switch price fetch failed', error);
+    }
     if (document.getElementById('chartMode')?.value === 'candles') await fetchOHLC(90);
     renderChart();
     const overlay = document.getElementById('chartGlassOverlay');
@@ -3110,30 +3416,10 @@ const LIVE_POLL_INTERVAL = 60 * 1000; // 60s
 let liveIntervalId = null;
 let _liveChart = null;
 
-// Fetch current price from CoinGecko (fallback to CoinDesk if needed)
+// Fetch current price with provider fallback suitable for browser runtime.
 async function fetchLivePrice(vs = 'usd') {
-  try {
-    const url = `https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=${vs}`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error('Coingecko fetch failed');
-    const json = await res.json();
-    const p = json?.bitcoin?.[vs];
-    if (!p) throw new Error('Invalid response');
-    return { price: Number(p), time: Date.now() };
-  } catch (err) {
-    console.warn('fetchLivePrice coingecko failed, trying coindesk', err);
-    try {
-      const r2 = await fetch('https://api.coindesk.com/v1/bpi/currentprice.json');
-      if (!r2.ok) throw new Error('CoinDesk failed');
-      const j2 = await r2.json();
-      const usd = j2?.bpi?.USD?.rate_float;
-      if (!usd) throw new Error('CoinDesk invalid');
-      return { price: Number(usd), time: Date.now() };
-    } catch (err2) {
-      console.error('Both live price fetches failed', err2);
-      throw err2;
-    }
-  }
+  const price = await fetchCurrentPriceValue(vs);
+  return { price, time: Date.now() };
 }
 
 function loadLiveCache() {

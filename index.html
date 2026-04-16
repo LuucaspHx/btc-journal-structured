@@ -366,7 +366,10 @@
 
         <div class="card chart-main-card section-panel" id="chartSection" data-section-panel="chart">
           <div style="font-weight:800;">Gráfico BTC e marcadores de aportes</div>
-          <div id="chartContainer" style="height:320px; margin-top:8px;"><canvas id="btcChart"></canvas></div>
+          <div id="chartContainer" style="height:320px; margin-top:8px;">
+            <canvas id="btcChart"></canvas>
+            <div id="chartEmptyState" class="chart-empty-state" hidden></div>
+          </div>
           <div id="chartLegend" class="note" style="margin-top:6px; font-size:12px;">—</div>
         </div>
 
