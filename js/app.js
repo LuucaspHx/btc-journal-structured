@@ -2544,8 +2544,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function boot() {
   loadState();
-  // price-service como cache passivo — alimentado pelo refreshLivePrice existente (60s)
   priceService = createPriceService({ fetcher: createCoinGeckoFetcher() });
+  priceService.onPriceUpdate(() => renderTableAndStats());
+  priceService.startPolling(state.vs || 'usd');
   hydrateChartMode();
   // tentar detectar e migrar dados antigos (btcJournalV1)
   detectAndOfferMigration();
