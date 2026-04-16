@@ -7,8 +7,7 @@
     <title>BTC Journal — Esqueleto</title>
     <!-- Chart.js + time adapter (date-fns) -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/date-fns@3.6.0/cdn.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@0.2.1/dist/chartjs-chart-financial.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
     <link rel="stylesheet" href="css/style.css" />
@@ -141,315 +140,280 @@
       </div>
   </section>
 
-    <div class="chart-controls" style="display:flex;gap:10px;align-items:center;padding:12px 16px;">
-      <label class="muted">Moeda</label>
-      <select id="vsCurrency">
-        <option value="eur">EUR</option>
-        <option value="usd" selected>USD</option>
-        <option value="brl">BRL</option>
-      </select>
-      <label class="muted">Ano</label>
-      <select id="yearSelect"></select>
-      <label class="muted">Visão</label>
-      <select id="chartMode">
-        <option value="line" selected>Linha</option>
-        <option value="candles">Velas (OHLC)</option>
-      </select>
-      <button id="resetBtn" class="ghost">Limpar dados (local)</button>
-  <button id="openPlanilhaBtn" class="btn ghost" disabled aria-disabled="true" title="Marcadores de Aportes (desativado)">Marcadores de Aportes</button>
-      <button id="openChartGlassBtn" class="btn">Ir para gráfico</button>
-      <label class="muted" style="display:flex;align-items:center;gap:6px; margin-left:auto;">
-        <input type="checkbox" id="chartOnlyFiltered" checked />
-        Aplicar filtros no gráfico
-      </label>
-    </div>
+    <!-- Navegação por abas -->
+    <nav class=”tab-nav” id=”tabNav” role=”tablist”>
+      <button class=”tab-btn active” data-tab=”resumo” role=”tab” aria-selected=”true”>Resumo</button>
+      <button class=”tab-btn” data-tab=”aportes” role=”tab” aria-selected=”false”>Aportes</button>
+      <button class=”tab-btn” data-tab=”filtros” role=”tab” aria-selected=”false”>Filtros</button>
+      <button class=”tab-btn” data-tab=”auditoria” role=”tab” aria-selected=”false”>Auditoria</button>
+      <button class=”tab-btn” data-tab=”metas” role=”tab” aria-selected=”false”>Metas</button>
+      <div class=”tab-nav-end”>
+        <button id=”resetBtn” class=”ghost small”>Limpar dados</button>
+      </div>
+    </nav>
 
-    <div id="chartGlassOverlay" class="chart-glass" aria-hidden="true" style="display:none;">
-      <div class="chart-glass-inner">
-        <button id="closeChartGlassBtn" class="btn ghost">Fechar</button>
-        <div class="chart-glass-body"><canvas id="glassBtcChart"></canvas></div>
+    <div id=”chartGlassOverlay” class=”chart-glass” aria-hidden=”true” style=”display:none;”>
+      <div class=”chart-glass-inner”>
+        <button id=”closeChartGlassBtn” class=”btn ghost”>Fechar</button>
+        <div class=”chart-glass-body”><canvas id=”glassBtcChart”></canvas></div>
       </div>
     </div>
 
-    <div class="wrap">
-      <aside class="sidebar">
-        <div class="card stack glass-card">
-          <div style="font-weight:800;">Resumo</div>
-          <div id="stats" class="kpiBar">
-            <div class="kpi">
-              <div class="label">Total investido</div>
-              <div class="value" id="kpiInvested">—</div>
-              <div class="note">Inclui fees</div>
-            </div>
-            <div class="kpi">
-              <div class="label">Total sats</div>
-              <div class="value" id="kpiSats">—</div>
-              <div class="note">Aportes abertos</div>
-            </div>
-            <div class="kpi">
-              <div class="label">Preço médio</div>
-              <div class="value" id="kpiAvg">—</div>
-              <div class="note">Ponderado pelos sats</div>
-            </div>
-            <div class="kpi">
-              <div class="label">Valor atual</div>
-              <div class="value" id="kpiCurrent">—</div>
-              <div class="note">Último preço CoinGecko</div>
-            </div>
-            <div class="kpi">
-              <div class="label">Lucro / Prejuízo</div>
-              <div class="value" id="kpiPL">—</div>
-              <div class="note">Contra valor investido</div>
-            </div>
-            <div class="kpi">
-              <div class="label">Retorno (%)</div>
-              <div class="value" id="kpiPLPct">—</div>
-              <div class="note">Percentual acumulado</div>
-            </div>
+    <!-- Painel: Resumo -->
+    <div class=”tab-panel” id=”tab-resumo” role=”tabpanel”>
+      <div class=”tab-content”>
+        <div class=”card stack glass-card”>
+          <div style=”font-weight:800;”>Resumo</div>
+          <div id=”stats” class=”kpiBar”>
+            <div class=”kpi”><div class=”label”>Total investido</div><div class=”value” id=”kpiInvested”>—</div><div class=”note”>Inclui fees</div></div>
+            <div class=”kpi”><div class=”label”>Total sats</div><div class=”value” id=”kpiSats”>—</div><div class=”note”>Aportes abertos</div></div>
+            <div class=”kpi”><div class=”label”>Preço médio</div><div class=”value” id=”kpiAvg”>—</div><div class=”note”>Ponderado pelos sats</div></div>
+            <div class=”kpi”><div class=”label”>Valor atual</div><div class=”value” id=”kpiCurrent”>—</div><div class=”note”>Último preço CoinGecko</div></div>
+            <div class=”kpi”><div class=”label”>Lucro / Prejuízo</div><div class=”value” id=”kpiPL”>—</div><div class=”note”>Contra valor investido</div></div>
+            <div class=”kpi”><div class=”label”>Retorno (%)</div><div class=”value” id=”kpiPLPct”>—</div><div class=”note”>Percentual acumulado</div></div>
           </div>
         </div>
 
-        <div class="card stack glass-card" id="filtersCard">
-          <div style="font-weight:800;">Filtros rápidos</div>
-          <form id="filters-form" class="stack" autocomplete="off">
-            <div class="row">
-              <div class="stack">
-                <label class="muted" for="filter-from">De</label>
-                <input type="date" id="filter-from" />
-              </div>
-              <div class="stack">
-                <label class="muted" for="filter-to">Até</label>
-                <input type="date" id="filter-to" />
-              </div>
-            </div>
-            <div class="row">
-              <div class="stack">
-                <label class="muted" for="filter-min-sats">Min. sats</label>
-                <input type="number" id="filter-min-sats" min="0" step="1" placeholder="ex: 100000" />
-              </div>
-              <div class="stack">
-                <label class="muted" for="filter-search">Busca</label>
-                <input type="text" id="filter-search" placeholder="nota, TXID, carteira..." />
-              </div>
-            </div>
-            <div class="row">
-              <div class="stack">
-                <label class="muted" for="filter-min-price">Preço mínimo</label>
-                <input type="number" id="filter-min-price" min="0" step="0.01" placeholder="ex: 25000" />
-              </div>
-              <div class="stack">
-                <label class="muted" for="filter-max-price">Preço máximo</label>
-                <input type="number" id="filter-max-price" min="0" step="0.01" placeholder="ex: 80000" />
-              </div>
-            </div>
-            <div class="row">
-              <div class="stack">
-                <label class="muted" for="filter-type">Tipo</label>
-                <select id="filter-type">
-                  <option value="all" selected>Todos</option>
-                  <option value="buy">Compra</option>
-                  <option value="sell">Venda</option>
-                </select>
-              </div>
-              <div class="stack">
-                <label class="muted" for="filter-sort">Ordenação</label>
-                <select id="filter-sort">
-                  <option value="date-desc" selected>Data ↓ (recente)</option>
-                  <option value="date-asc">Data ↑ (antiga)</option>
-                  <option value="sats-desc">Sats ↓</option>
-                  <option value="sats-asc">Sats ↑</option>
-                  <option value="price-desc">Preço ↓</option>
-                  <option value="price-asc">Preço ↑</option>
-                  <option value="fiat-desc">Valor (€) ↓</option>
-                  <option value="fiat-asc">Valor (€) ↑</option>
-                </select>
-              </div>
-            </div>
-            <div style="display:flex; gap:8px;">
-              <button type="button" id="filters-reset" class="ghost" style="flex:1;">Limpar filtros</button>
-            </div>
-          </form>
-          <div id="filtersMeta" class="filters-meta" aria-live="polite">
-            <span class="filters-count">0 filtros ativos</span>
-            <span class="filters-total">Mostrando todos os aportes</span>
-            <span class="filters-sort" id="filtersSortLabel">Ordem: data ↓ (recentes)</span>
+        <div class=”card”>
+          <div style=”display:flex;gap:10px;align-items:center;flex-wrap:wrap;”>
+            <label class=”muted”>Moeda</label>
+            <select id=”vsCurrency”><option value=”eur”>EUR</option><option value=”usd” selected>USD</option><option value=”brl”>BRL</option></select>
+            <label class=”muted”>Ano</label>
+            <select id=”yearSelect”></select>
+            <label class=”muted”>Visão</label>
+            <select id=”chartMode”><option value=”line” selected>Linha</option><option value=”candles”>Velas (OHLC)</option></select>
+            <button id=”openChartGlassBtn” class=”btn ghost small”>Expandir gráfico</button>
+            <label class=”muted” style=”display:flex;align-items:center;gap:6px;margin-left:auto;”>
+              <input type=”checkbox” id=”chartOnlyFiltered” checked /> Filtros no gráfico
+            </label>
           </div>
+          <div style=”font-weight:800;margin-top:12px;”>Gráfico BTC</div>
+          <div id=”chartContainer” style=”height:340px;margin-top:8px;”><canvas id=”btcChart”></canvas></div>
+          <div id=”chartLegend” class=”note” style=”margin-top:6px;font-size:12px;”>—</div>
         </div>
 
-        <form id="tx-form">
-          <div class="card stack glass-card">
-            <div style="display:flex; align-items:center; justify-content:space-between;">
+        <div id=”monthsContainer” class=”card”>
+          <div style=”font-weight:800;”>Aportes por mês</div>
+          <div id=”monthsGrid” style=”display:grid;gap:8px;margin-top:8px;”></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Painel: Aportes -->
+    <div class=”tab-panel” id=”tab-aportes” role=”tabpanel” style=”display:none;”>
+      <div class=”tab-content”>
+        <form id=”tx-form”>
+          <div class=”card stack glass-card”>
+            <div style=”display:flex;align-items:center;justify-content:space-between;”>
               <div>
-                <div style="font-weight:800;">Novo aporte</div>
-                <div class="note">Guarda localmente no seu navegador</div>
+                <div style=”font-weight:800;”>Novo aporte</div>
+                <div class=”note”>Guarda localmente no seu navegador</div>
               </div>
-              <button id="fetchPriceBtn" type="button" class="ghost" title="Pegar preço do dia pelo CoinGecko">Buscar preço do dia</button>
+              <button id=”fetchPriceBtn” type=”button” class=”ghost” title=”Pegar preço do dia pelo CoinGecko”>Buscar preço do dia</button>
             </div>
-            <div class="row">
-              <div class="stack"><label class="muted">Data</label><input id="tx-date" name="date" type="date" required /></div>
-              <div class="stack"><label class="muted">Sats</label><input id="tx-sats" name="sats" type="number" step="1" placeholder="ex: 10000" required /></div>
+            <div class=”row”>
+              <div class=”stack”><label class=”muted”>Data</label><input id=”tx-date” name=”date” type=”date” required /></div>
+              <div class=”stack”><label class=”muted”>Sats</label><input id=”tx-sats” name=”sats” type=”number” step=”1” placeholder=”ex: 10000” required /></div>
             </div>
-            <div class="row">
-              <div class="stack"><label class="muted">Preço BTC</label><input id="tx-price" name="price" type="number" step="0.01" placeholder="ex: 35000" required /></div>
-              <div class="stack"><label class="muted">Valor (€)</label><input id="tx-fiat" name="fiat" type="number" step="0.01" placeholder="ex: 500" required /></div>
+            <div class=”row”>
+              <div class=”stack”><label class=”muted”>Preço BTC</label><input id=”tx-price” name=”price” type=”number” step=”0.01” placeholder=”ex: 35000” required /></div>
+              <div class=”stack”><label class=”muted”>Valor (€)</label><input id=”tx-fiat” name=”fiat” type=”number” step=”0.01” placeholder=”ex: 500” required /></div>
             </div>
-            <div class="row">
-              <div class="stack"><label class="muted">Fee (€)</label><input id="tx-fee" name="fee" type="number" step="0.01" placeholder="ex: 1.50" /></div>
-              <div class="stack"><label class="muted">Exchange</label><input id="tx-exchange" name="exchange" type="text" placeholder="ex: Kraken" /></div>
+            <div class=”row”>
+              <div class=”stack”><label class=”muted”>Fee (€)</label><input id=”tx-fee” name=”fee” type=”number” step=”0.01” placeholder=”ex: 1.50” /></div>
+              <div class=”stack”><label class=”muted”>Exchange</label><input id=”tx-exchange” name=”exchange” type=”text” placeholder=”ex: Kraken” /></div>
             </div>
-            <div class="row">
-              <div class="stack"><label class="muted">Tipo</label>
-                <select id="tx-type" name="type">
-                  <option value="buy" selected>Compra</option>
-                  <option value="sell">Venda</option>
-                </select>
+            <div class=”row”>
+              <div class=”stack”><label class=”muted”>Tipo</label>
+                <select id=”tx-type” name=”type”><option value=”buy” selected>Compra</option><option value=”sell”>Venda</option></select>
               </div>
-              <div class="stack"><label class="muted">Nota</label><input id="tx-note" name="note" type="text" placeholder="opcional" /></div>
+              <div class=”stack”><label class=”muted”>Nota</label><input id=”tx-note” name=”note” type=”text” placeholder=”opcional” /></div>
             </div>
-            <div class="row">
-              <div class="stack">
-                <label class="muted" for="tx-strategy">Estratégia (texto livre)</label>
-                <input id="tx-strategy" name="strategy" type="text" placeholder="ex.: dca" list="txStrategyOptions" />
-                <datalist id="txStrategyOptions"></datalist>
+            <div class=”row”>
+              <div class=”stack”>
+                <label class=”muted” for=”tx-strategy”>Estratégia</label>
+                <input id=”tx-strategy” name=”strategy” type=”text” placeholder=”ex.: dca” list=”txStrategyOptions” />
+                <datalist id=”txStrategyOptions”></datalist>
               </div>
-              <div class="stack">
-                <label class="muted" for="tx-tags">Tags (vírgula)</label>
-                <input id="tx-tags" name="tags" type="text" placeholder="cold,long-term" />
-                <div id="txTagSuggestions" class="goal-chip-list"></div>
+              <div class=”stack”>
+                <label class=”muted” for=”tx-tags”>Tags (vírgula)</label>
+                <input id=”tx-tags” name=”tags” type=”text” placeholder=”cold,long-term” />
+                <div id=”txTagSuggestions” class=”goal-chip-list”></div>
               </div>
             </div>
-            <div class="row">
-              <div class="stack"><label class="muted" for="tx-txid">TXID (opcional)</label><input id="tx-txid" name="txid" type="text" placeholder="hash da transação" autocomplete="off" /></div>
-              <div class="stack"><label class="muted" for="tx-wallet">Endereço / Carteira</label><input id="tx-wallet" name="wallet" type="text" placeholder="bc1..." autocomplete="off" /></div>
+            <div class=”row”>
+              <div class=”stack”><label class=”muted” for=”tx-txid”>TXID (opcional)</label><input id=”tx-txid” name=”txid” type=”text” placeholder=”hash da transação” autocomplete=”off” /></div>
+              <div class=”stack”><label class=”muted” for=”tx-wallet”>Endereço / Carteira</label><input id=”tx-wallet” name=”wallet” type=”text” placeholder=”bc1...” autocomplete=”off” /></div>
             </div>
-            <div class="tx-actions-row">
-              <div class="tx-actions-buttons">
-                <button id="tx-add" type="submit" class="primary">Adicionar</button>
-                <button id="tx-cancel-edit" type="button" class="ghost" style="display:none;">Cancelar</button>
-                <button id="tx-delete-edit" type="button" class="danger" style="display:none;">Apagar</button>
+            <div class=”tx-actions-row”>
+              <div class=”tx-actions-buttons”>
+                <button id=”tx-add” type=”submit” class=”primary”>Adicionar</button>
+                <button id=”tx-cancel-edit” type=”button” class=”ghost” style=”display:none;”>Cancelar</button>
+                <button id=”tx-delete-edit” type=”button” class=”danger” style=”display:none;”>Apagar</button>
               </div>
-              <div id="tx-error" class="muted" role="status" aria-live="polite"></div>
+              <div id=”tx-error” class=”muted” role=”status” aria-live=”polite”></div>
             </div>
           </div>
         </form>
 
-        <div class="card">
-          <div style="font-weight:800;">Gráfico BTC e marcadores de aportes</div>
-          <div id="chartContainer" style="height:320px; margin-top:8px;"><canvas id="btcChart"></canvas></div>
-          <div id="chartLegend" class="note" style="margin-top:6px; font-size:12px;">—</div>
-        </div>
-
-        <div id="monthsContainer" class="card" style="margin-top:8px;">
-          <div style="font-weight:800;">Aportes</div>
-          <div id="monthsGrid" style="display:grid; gap:8px; margin-top:8px;"></div>
-        </div>
-      </aside>
-
-      <main style="display:grid; gap:12px; align-content:start;">
-        <!-- Exportar / Importar moved to footer -->
-
-        <div id="transactionsCard" class="card">
-          <div style="display:flex; align-items:center; justify-content:space-between;">
-            <div style="font-weight:800;">Transações</div>
-            <div id="transactionsMeta" class="muted" style="font-size:12px;">—</div>
+        <div id=”transactionsCard” class=”card”>
+          <div style=”display:flex;align-items:center;justify-content:space-between;”>
+            <div style=”font-weight:800;”>Transações</div>
+            <div id=”transactionsMeta” class=”muted” style=”font-size:12px;”>—</div>
           </div>
-          <table style="width:100%;border-collapse:collapse;margin-top:8px;">
+          <table style=”width:100%;border-collapse:collapse;margin-top:8px;”>
             <thead><tr><th>Data</th><th>Sats</th><th>Preço</th><th>P&L</th><th>Status</th><th>Classificação</th><th>Nota</th><th></th></tr></thead>
-            <tbody id="tx-body"></tbody>
+            <tbody id=”tx-body”></tbody>
           </table>
         </div>
+      </div>
+    </div>
 
-        <div id="auditCard" class="card">
-          <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px;">
-            <div>
-              <div style="font-weight:800;">Modo auditoria / Proof Ledger</div>
-              <div class="muted" style="font-size:12px;">Resumo da comprovação dos aportes (dados on-chain vs declarados)</div>
+    <!-- Painel: Filtros -->
+    <div class=”tab-panel” id=”tab-filtros” role=”tabpanel” style=”display:none;”>
+      <div class=”tab-content”>
+        <div class=”card stack glass-card” id=”filtersCard”>
+          <div style=”font-weight:800;”>Filtros rápidos</div>
+          <form id=”filters-form” class=”stack” autocomplete=”off”>
+            <div class=”row”>
+              <div class=”stack”><label class=”muted” for=”filter-from”>De</label><input type=”date” id=”filter-from” /></div>
+              <div class=”stack”><label class=”muted” for=”filter-to”>Até</label><input type=”date” id=”filter-to” /></div>
             </div>
-            <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
-              <button id="auditValidateBtn" type="button" class="ghost" style="font-size:12px; padding:6px 10px;">Validar pendentes</button>
-              <div id="auditMeta" class="muted" style="font-size:12px;">—</div>
+            <div class=”row”>
+              <div class=”stack”><label class=”muted” for=”filter-min-sats”>Min. sats</label><input type=”number” id=”filter-min-sats” min=”0” step=”1” placeholder=”ex: 100000” /></div>
+              <div class=”stack”><label class=”muted” for=”filter-search”>Busca</label><input type=”text” id=”filter-search” placeholder=”nota, TXID, carteira...” /></div>
             </div>
-          </div>
-          <div id="auditSummary" class="audit-summary">—</div>
-          <div id="auditDistribution" class="audit-distribution"></div>
-          <div id="auditFilters" class="audit-filters" role="toolbar" aria-label="Filtros de auditoria"></div>
-          <div class="audit-groups">
-            <div class="audit-group">
-              <div class="audit-group-title">Carteiras</div>
-              <div id="auditGroup-wallet" class="audit-group-body">—</div>
+            <div class=”row”>
+              <div class=”stack”><label class=”muted” for=”filter-min-price”>Preço mínimo</label><input type=”number” id=”filter-min-price” min=”0” step=”0.01” placeholder=”ex: 25000” /></div>
+              <div class=”stack”><label class=”muted” for=”filter-max-price”>Preço máximo</label><input type=”number” id=”filter-max-price” min=”0” step=”0.01” placeholder=”ex: 80000” /></div>
             </div>
-            <div class="audit-group">
-              <div class="audit-group-title">Exchanges</div>
-              <div id="auditGroup-exchange" class="audit-group-body">—</div>
+            <div class=”row”>
+              <div class=”stack”>
+                <label class=”muted” for=”filter-type”>Tipo</label>
+                <select id=”filter-type”><option value=”all” selected>Todos</option><option value=”buy”>Compra</option><option value=”sell”>Venda</option></select>
+              </div>
+              <div class=”stack”>
+                <label class=”muted” for=”filter-sort”>Ordenação</label>
+                <select id=”filter-sort”>
+                  <option value=”date-desc” selected>Data ↓ (recente)</option>
+                  <option value=”date-asc”>Data ↑ (antiga)</option>
+                  <option value=”sats-desc”>Sats ↓</option>
+                  <option value=”sats-asc”>Sats ↑</option>
+                  <option value=”price-desc”>Preço ↓</option>
+                  <option value=”price-asc”>Preço ↑</option>
+                  <option value=”fiat-desc”>Valor (€) ↓</option>
+                  <option value=”fiat-asc”>Valor (€) ↑</option>
+                </select>
+              </div>
             </div>
-            <div class="audit-group">
-              <div class="audit-group-title">Estratégias</div>
-              <div id="auditGroup-strategy" class="audit-group-body">—</div>
+            <div style=”display:flex;gap:8px;”>
+              <button type=”button” id=”filters-reset” class=”ghost” style=”flex:1;”>Limpar filtros</button>
             </div>
-          </div>
-          <table class="audit-table">
-            <thead>
-              <tr>
-                <th>Data</th>
-                <th>Status</th>
-                <th>TXID</th>
-                <th>Conclusão</th>
-              </tr>
-            </thead>
-            <tbody id="auditTableBody">
-              <tr><td colspan="4" class="muted">—</td></tr>
-            </tbody>
-          </table>
-          <div class="audit-footer">
-            <button id="auditShowMoreBtn" type="button" class="ghost small" style="display:none;">Mostrar mais</button>
+          </form>
+          <div id=”filtersMeta” class=”filters-meta” aria-live=”polite”>
+            <span class=”filters-count”>0 filtros ativos</span>
+            <span class=”filters-total”>Mostrando todos os aportes</span>
+            <span class=”filters-sort” id=”filtersSortLabel”>Ordem: data ↓ (recentes)</span>
           </div>
         </div>
+      </div>
+    </div>
 
-        <div id="goalsCard" class="card goals-card">
-          <div class="goals-head">
+    <!-- Painel: Auditoria -->
+    <div class=”tab-panel” id=”tab-auditoria” role=”tabpanel” style=”display:none;”>
+      <div class=”tab-content”>
+        <div id=”auditCard” class=”card”>
+          <div style=”display:flex;align-items:flex-start;justify-content:space-between;gap:12px;”>
             <div>
-              <div style="font-weight:800;">Metas em sats</div>
-              <div class="muted" style="font-size:12px;">Defina alvos e veja quais aportes contam para cada meta.</div>
+              <div style=”font-weight:800;”>Auditoria / Proof Ledger</div>
+              <div class=”muted” style=”font-size:12px;”>Comprovação dos aportes (dados on-chain vs declarados)</div>
             </div>
-            <div class="goals-head-actions">
-              <button id="goalsNewBtn" type="button" class="primary small">Nova meta</button>
+            <div style=”display:flex;flex-direction:column;align-items:flex-end;gap:6px;”>
+              <button id=”auditValidateBtn” type=”button” class=”ghost” style=”font-size:12px;padding:6px 10px;”>Validar pendentes</button>
+              <div id=”auditMeta” class=”muted” style=”font-size:12px;”>—</div>
             </div>
           </div>
-          <div id="goalsEmptyState" class="goals-empty">Nenhuma meta cadastrada. Clique em “Nova meta” para começar.</div>
-          <div id="goalsList" class="goals-list" role="list"></div>
-          <div id="goalsDetail" class="goals-detail" style="display:none;">
-            <div class="goals-detail-head">
+          <div id=”auditSummary” class=”audit-summary”>—</div>
+          <div id=”auditDistribution” class=”audit-distribution”></div>
+          <div id=”auditFilters” class=”audit-filters” role=”toolbar” aria-label=”Filtros de auditoria”></div>
+          <div class=”audit-groups”>
+            <div class=”audit-group”><div class=”audit-group-title”>Carteiras</div><div id=”auditGroup-wallet” class=”audit-group-body”>—</div></div>
+            <div class=”audit-group”><div class=”audit-group-title”>Exchanges</div><div id=”auditGroup-exchange” class=”audit-group-body”>—</div></div>
+            <div class=”audit-group”><div class=”audit-group-title”>Estratégias</div><div id=”auditGroup-strategy” class=”audit-group-body”>—</div></div>
+          </div>
+          <table class=”audit-table”>
+            <thead><tr><th>Data</th><th>Status</th><th>TXID</th><th>Conclusão</th></tr></thead>
+            <tbody id=”auditTableBody”><tr><td colspan=”4” class=”muted”>—</td></tr></tbody>
+          </table>
+          <div class=”audit-footer”>
+            <button id=”auditShowMoreBtn” type=”button” class=”ghost small” style=”display:none;”>Mostrar mais</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Painel: Metas -->
+    <div class=”tab-panel” id=”tab-metas” role=”tabpanel” style=”display:none;”>
+      <div class=”tab-content”>
+        <div id=”goalsCard” class=”card goals-card”>
+          <div class=”goals-head”>
+            <div>
+              <div style=”font-weight:800;”>Metas em sats</div>
+              <div class=”muted” style=”font-size:12px;”>Defina alvos e veja quais aportes contam para cada meta.</div>
+            </div>
+            <div class=”goals-head-actions”>
+              <button id=”goalsNewBtn” type=”button” class=”primary small”>Nova meta</button>
+            </div>
+          </div>
+          <div id=”goalsEmptyState” class=”goals-empty”>Nenhuma meta cadastrada. Clique em “Nova meta” para começar.</div>
+          <div id=”goalsList” class=”goals-list” role=”list”></div>
+          <div id=”goalsDetail” class=”goals-detail” style=”display:none;”>
+            <div class=”goals-detail-head”>
               <div>
-                <div id="goalDetailTitle" class="goals-detail-title">Selecione uma meta</div>
-                <div id="goalDetailMeta" class="muted goals-detail-meta">—</div>
+                <div id=”goalDetailTitle” class=”goals-detail-title”>Selecione uma meta</div>
+                <div id=”goalDetailMeta” class=”muted goals-detail-meta”>—</div>
               </div>
-              <div class="goals-detail-actions">
-                <button id="goalsEditActiveBtn" type="button" class="ghost small" disabled>Editar</button>
-                <button id="goalsDeleteActiveBtn" type="button" class="ghost small" disabled>Remover</button>
+              <div class=”goals-detail-actions”>
+                <button id=”goalsEditActiveBtn” type=”button” class=”ghost small” disabled>Editar</button>
+                <button id=”goalsDeleteActiveBtn” type=”button” class=”ghost small” disabled>Remover</button>
               </div>
             </div>
-            <div id="goalDetailStats" class="goals-detail-stats"></div>
-            <div id="goalDetailEntriesWrapper" class="goals-detail-table-wrapper">
-              <table class="goals-detail-table">
-                <thead>
-                  <tr>
-                    <th>Data</th>
-                    <th>Sats</th>
-                    <th>Valor (fiat)</th>
-                    <th>Estratégia</th>
-                    <th>Tags</th>
-                  </tr>
-                </thead>
-                <tbody id="goalDetailTableBody">
-                  <tr><td colspan="5" class="muted">Selecione uma meta para ver os aportes correspondentes.</td></tr>
+            <div id=”goalDetailStats” class=”goals-detail-stats”></div>
+            <div id=”goalDetailEntriesWrapper” class=”goals-detail-table-wrapper”>
+              <table class=”goals-detail-table”>
+                <thead><tr><th>Data</th><th>Sats</th><th>Valor (fiat)</th><th>Estratégia</th><th>Tags</th></tr></thead>
+                <tbody id=”goalDetailTableBody”>
+                  <tr><td colspan=”5” class=”muted”>Selecione uma meta para ver os aportes correspondentes.</td></tr>
                 </tbody>
               </table>
             </div>
           </div>
         </div>
-      </main>
+      </div>
     </div>
 
+    <!-- Hidden elements mantidos pelo app.js -->
+    <button id=”openPlanilhaBtn” style=”display:none;” disabled aria-disabled=”true”></button>
+
+    <script>
+      (function () {
+        const nav = document.getElementById('tabNav');
+        if (!nav) return;
+        nav.addEventListener('click', function (e) {
+          const btn = e.target.closest('.tab-btn');
+          if (!btn) return;
+          const tab = btn.dataset.tab;
+          if (!tab) return;
+          nav.querySelectorAll('.tab-btn').forEach(function (b) {
+            b.classList.toggle('active', b === btn);
+            b.setAttribute('aria-selected', b === btn ? 'true' : 'false');
+          });
+          document.querySelectorAll('.tab-panel').forEach(function (p) {
+            p.style.display = p.id === 'tab-' + tab ? 'block' : 'none';
+          });
+        });
+      })();
+    </script>
     <script type="module" src="./js/app.js"></script>
     <!-- Liquid Glass: defs globais -->
     <footer style="padding:12px 20px; display:flex; justify-content:center; gap:12px; align-items:center;">
