@@ -344,7 +344,32 @@ function clearChartEmptyState() {
   }
 }
 
+function destroyChartForCanvas(canvasOrId) {
+  const canvas =
+    typeof canvasOrId === 'string' ? document.getElementById(canvasOrId) : canvasOrId || null;
+  if (!canvas || typeof Chart === 'undefined' || typeof Chart.getChart !== 'function') return;
+  const existing = Chart.getChart(canvas);
+  if (!existing) return;
+  try {
+    existing.destroy();
+  } catch (e) {
+    /* noop */
+  }
+}
+
 function destroyMainChartInstance() {
+  destroyChartForCanvas('btcChart');
+  const globalChart =
+    typeof window !== 'undefined' && window.btcChart && window.btcChart !== _chart
+      ? window.btcChart
+      : null;
+  if (globalChart) {
+    try {
+      globalChart.destroy();
+    } catch (e) {
+      /* noop */
+    }
+  }
   if (_chart) {
     try {
       _chart.destroy();
@@ -2516,6 +2541,9 @@ function buildEntryDataset(points = [], palette = {}) {
     pointHoverRadius(context) {
       return Math.min(MAX_POINT_RADIUS + 2, computePointRadius(context.raw?.sats || 0) + 2);
     },
+    pointHitRadius(context) {
+      return Math.min(MAX_POINT_RADIUS + 6, computePointRadius(context.raw?.sats || 0) + 6);
+    },
     pointBackgroundColor(context) {
       const raw = context.raw || {};
       if (raw.closed) return palette.muted || '#94a3b8';
@@ -2552,6 +2580,73 @@ function buildAverageDataset(length = 0, avgPrice = 0, palette = {}) {
     tension: 0,
     order: 2,
   };
+}
+
+function isValidLineChartPoint(point) {
+  if (Number.isFinite(point)) return true;
+  return Boolean(point && Number.isFinite(point.x) && Number.isFinite(point.y));
+}
+
+function isValidScatterChartPoint(point) {
+  return Boolean(point && Number.isFinite(point.x) && Number.isFinite(point.y));
+}
+
+function isValidCandlestickPoint(point) {
+  return Boolean(
+    point &&
+    Number.isFinite(point.x) &&
+    Number.isFinite(point.o) &&
+    Number.isFinite(point.h) &&
+    Number.isFinite(point.l) &&
+    Number.isFinite(point.c)
+  );
+}
+
+function sanitizeChartDataset(dataset = {}) {
+  const next = { ...dataset };
+  const originalData = Array.isArray(dataset.data) ? dataset.data : [];
+
+  if (next.type === 'candlestick') {
+    next.data = originalData.filter(isValidCandlestickPoint);
+    return next;
+  }
+
+  if (next.type === 'scatter') {
+    next.data = originalData.filter(isValidScatterChartPoint);
+    if (!Number.isFinite(next.pointHitRadius)) next.pointHitRadius = MAX_POINT_RADIUS + 6;
+    return next;
+  }
+
+  next.data = originalData.filter(isValidLineChartPoint);
+  if (!Number.isFinite(next.pointHitRadius)) next.pointHitRadius = 8;
+  return next;
+}
+
+function sanitizeChartConfig(cfg) {
+  const datasets = Array.isArray(cfg?.data?.datasets) ? cfg.data.datasets : [];
+  const sanitizedDatasets = datasets
+    .map((dataset) => sanitizeChartDataset(dataset))
+    .filter((dataset) => Array.isArray(dataset.data) && dataset.data.length > 0);
+  return {
+    ...cfg,
+    data: {
+      ...(cfg?.data || {}),
+      datasets: sanitizedDatasets,
+    },
+  };
+}
+
+function getPrimaryPriceDataset(cfg) {
+  const datasets = Array.isArray(cfg?.data?.datasets) ? cfg.data.datasets : [];
+  return (
+    datasets.find(
+      (dataset) =>
+        dataset?.type !== 'scatter' &&
+        dataset?.type !== 'candlestick' &&
+        typeof dataset?.label === 'string' &&
+        dataset.label.startsWith('BTC/')
+    ) || null
+  );
 }
 
 function isAnnotationAvailable() {
@@ -2763,7 +2858,7 @@ function buildChartConfig(series, palette, options = {}) {
     };
   }
 
-  return cfg;
+  return sanitizeChartConfig(cfg);
 }
 
 function renderChartToCanvas(canvasId = 'btcChart', visibleTxs = getVisibleTxs()) {
@@ -2788,14 +2883,24 @@ function renderChartToCanvas(canvasId = 'btcChart', visibleTxs = getVisibleTxs()
     addAverageDataset: true,
     compact: canvasId === 'glassBtcChart',
   });
+  const priceDataset = getPrimaryPriceDataset(cfg);
+  const hasPriceSeries = Array.isArray(priceDataset?.data) && priceDataset.data.length > 0;
+  if (!hasPriceSeries) {
+    if (canvasId === 'glassBtcChart') {
+      destroyChartForCanvas(canvas);
+      glassChartInstance = null;
+      return null;
+    }
+    destroyMainChartInstance();
+    const issue = resolvePriceFetchIssue(lastPriceFetchIssue, vs);
+    setChartEmptyState(issue.title, issue.detail);
+    return null;
+  }
 
   // destroy previous glass chart if exists
   if (canvasId === 'glassBtcChart') {
-    if (glassChartInstance) {
-      try {
-        glassChartInstance.destroy();
-      } catch (e) {}
-    }
+    destroyChartForCanvas(canvas);
+    if (glassChartInstance) glassChartInstance = null;
     glassChartInstance = new Chart(canvas.getContext('2d'), cfg);
     // Forçar resize no próximo frame para garantir que o canvas use o tamanho do container
     try {
@@ -2808,11 +2913,7 @@ function renderChartToCanvas(canvasId = 'btcChart', visibleTxs = getVisibleTxs()
     }
     return glassChartInstance;
   } else {
-    // fallback: use global chart creation (existing function)
-    if (window.btcChart && typeof window.btcChart.destroy === 'function')
-      try {
-        window.btcChart.destroy();
-      } catch (e) {}
+    destroyMainChartInstance();
     window.btcChart = new Chart(canvas.getContext('2d'), cfg);
     try {
       requestAnimationFrame(() => {
@@ -3200,8 +3301,8 @@ function renderChart(visibleTxs = getVisibleTxs()) {
     allowAnnotation: true,
     addAverageDataset: true,
   });
-  const hasPriceSeries =
-    Array.isArray(cfg?.data?.datasets?.[0]?.data) && cfg.data.datasets[0].data.length > 0;
+  const priceDataset = getPrimaryPriceDataset(cfg);
+  const hasPriceSeries = Array.isArray(priceDataset?.data) && priceDataset.data.length > 0;
   if (!hasPriceSeries) {
     destroyMainChartInstance();
     const issue = resolvePriceFetchIssue(lastPriceFetchIssue, vs);
@@ -3210,11 +3311,7 @@ function renderChart(visibleTxs = getVisibleTxs()) {
   }
 
   clearChartEmptyState();
-
-  if (_chart)
-    try {
-      _chart.destroy();
-    } catch (e) {}
+  destroyMainChartInstance();
   _chart = new Chart(canvas.getContext('2d'), cfg);
   try {
     window.btcChart = _chart;
