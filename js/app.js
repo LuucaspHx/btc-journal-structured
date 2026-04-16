@@ -671,6 +671,8 @@ function showLoadingOverlay(message = 'A carregar dados...') {
 }
 
 function getLatestMarketPrice() {
+  const livePrice = priceService?.getCurrentPrice?.(state.vs || 'usd');
+  if (Number.isFinite(livePrice)) return Number(livePrice);
   if (Array.isArray(state.prices) && state.prices.length > 0) {
     const last = state.prices[state.prices.length - 1];
     if (last && Number.isFinite(last.p)) return Number(last.p);
@@ -2397,9 +2399,12 @@ function buildChartConfig(series, palette, options = {}) {
     });
   }
   const vsLabel = (document.getElementById('vsCurrency')?.value || state.vs || 'USD').toUpperCase();
+  const pricePoints = series.labels
+    .map((t, i) => ({ x: t, y: series.priceData[i] }))
+    .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
   datasets.push({
     label: `BTC/${vsLabel}`,
-    data: series.priceData,
+    data: pricePoints,
     parsing: false,
     borderWidth: 1.5,
     borderColor: palette.brand || '#f7931a',
@@ -2595,6 +2600,22 @@ function boot() {
     },
   });
   bindChartFilterToggle();
+  const resetBtn = document.getElementById('resetBtn');
+  if (resetBtn && !resetBtn.dataset.bound) {
+    resetBtn.dataset.bound = 'true';
+    resetBtn.addEventListener('click', async () => {
+      const ok = await confirmModalAsync(
+        'Apagar todos os dados locais? Esta ação não pode ser desfeita.'
+      );
+      if (!ok) return;
+      try {
+        localStorage.removeItem('btc_journal_state_v3');
+      } catch (e) {
+        /* noop */
+      }
+      window.location.reload();
+    });
+  }
   bindAuditControls({
     onValidatePending: () => validatePendingTxids(),
     onFilterChange: (filterId) => setAuditFilter(filterId),
