@@ -2313,6 +2313,60 @@ function isAnnotationAvailable() {
   );
 }
 
+function getActiveChartPoint(chart) {
+  const tooltipPoints = chart?.tooltip?.dataPoints;
+  if (Array.isArray(tooltipPoints) && tooltipPoints.length > 0) {
+    const point = tooltipPoints[0];
+    const x = point?.element?.x;
+    const y = point?.element?.y;
+    const value = point?.parsed?.y;
+    if (Number.isFinite(x) && Number.isFinite(y)) {
+      return { x, y, value: Number.isFinite(value) ? value : null };
+    }
+  }
+
+  const active = typeof chart?.getActiveElements === 'function' ? chart.getActiveElements() : [];
+  if (!Array.isArray(active) || active.length === 0) return null;
+
+  const { datasetIndex, index } = active[0];
+  const meta =
+    typeof chart?.getDatasetMeta === 'function' ? chart.getDatasetMeta(datasetIndex) : null;
+  const element = meta?.data?.[index];
+  const raw = chart?.data?.datasets?.[datasetIndex]?.data?.[index];
+  const rawValue = Number.isFinite(raw?.y) ? raw.y : Number.isFinite(raw) ? raw : null;
+
+  if (Number.isFinite(element?.x) && Number.isFinite(element?.y)) {
+    return { x: element.x, y: element.y, value: rawValue };
+  }
+
+  return null;
+}
+
+const chartCrosshairPlugin = {
+  id: 'btcJournalCrosshair',
+  afterDraw(chart, _args, pluginOptions) {
+    const point = getActiveChartPoint(chart);
+    const area = chart?.chartArea;
+    if (!point || !area) return;
+
+    const { x, y } = point;
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+
+    const ctx = chart.ctx;
+    ctx.save();
+    ctx.beginPath();
+    ctx.setLineDash(Array.isArray(pluginOptions?.dash) ? pluginOptions.dash : [4, 4]);
+    ctx.lineWidth = Number.isFinite(pluginOptions?.lineWidth) ? pluginOptions.lineWidth : 1;
+    ctx.strokeStyle = pluginOptions?.color || 'rgba(142, 142, 147, 0.55)';
+    ctx.moveTo(x, area.top);
+    ctx.lineTo(x, area.bottom);
+    ctx.moveTo(area.left, y);
+    ctx.lineTo(area.right, y);
+    ctx.stroke();
+    ctx.restore();
+  },
+};
+
 function buildChartOptions(series, palette, options = {}) {
   const { avgPrice } = series;
   const { min, max } = ensureChartRange();
@@ -2336,6 +2390,11 @@ function buildChartOptions(series, palette, options = {}) {
   return {
     responsive: true,
     maintainAspectRatio: false,
+    interaction: {
+      mode: 'nearest',
+      intersect: false,
+      axis: 'x',
+    },
     scales: {
       x: {
         type: 'time',
@@ -2357,9 +2416,12 @@ function buildChartOptions(series, palette, options = {}) {
     },
     plugins: {
       legend: { labels: { color: palette.muted || '#94a3b8' } },
+      btcJournalCrosshair: {
+        color: palette.muted || 'rgba(142, 142, 147, 0.55)',
+        dash: [4, 4],
+        lineWidth: 1,
+      },
       tooltip: {
-        mode: 'nearest',
-        intersect: false,
         callbacks: {
           title: tooltipTitle,
           label(context) {
@@ -2424,6 +2486,7 @@ function buildChartConfig(series, palette, options = {}) {
     type: 'line',
     data: { labels: series.labels, datasets },
     options: buildChartOptions(series, palette, { ...options, vsLabel }),
+    plugins: [chartCrosshairPlugin],
   };
 
   if (useAnnotation && series.avgPrice > 0) {

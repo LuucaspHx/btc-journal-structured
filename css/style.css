@@ -51,6 +51,99 @@ body.plainilha-theme { background: radial-gradient(1200px 800px at 80% -10%, #1b
 html,body{background:var(--bg);color:var(--ink);}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial;}
 .site-header{position:sticky;top:0;z-index:10;display:flex;justify-content:space-between;align-items:center;padding:12px 16px;background:#fff;border-bottom:1px solid var(--line);}
+header.site-header nav{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+}
+.section-menu{
+  position: sticky;
+  top: 52px;
+  z-index: 40;
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  padding:10px 16px;
+  background: rgba(255,255,255,0.88);
+  backdrop-filter: blur(10px);
+  border-bottom:1px solid rgba(0,0,0,0.04);
+}
+.section-menu-btn{
+  color:var(--fg-100);
+  font-size:13px;
+  font-weight:600;
+  padding:8px 12px;
+  border-radius:999px;
+  border:1px solid rgba(0,0,0,0.06);
+  background:#fff;
+  box-shadow: var(--shadow-1);
+  cursor:pointer;
+}
+.section-menu-btn:hover{
+  border-color: rgba(0,0,0,0.14);
+}
+.section-menu-btn.active{
+  background: var(--fg-100);
+  color:#fff;
+  border-color: var(--fg-100);
+}
+.chart-controls{
+  display:flex;
+  justify-content:flex-end;
+  align-items:center;
+  padding:0;
+}
+.chart-settings{
+  position: relative;
+}
+.chart-settings-trigger{
+  list-style:none;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  width:42px;
+  height:42px;
+  border:1px solid rgba(0,0,0,0.08);
+  border-radius:999px;
+  background:#fff;
+  box-shadow: var(--shadow-1);
+  cursor:pointer;
+  font-size:20px;
+  line-height:1;
+  user-select:none;
+}
+.chart-settings-trigger::-webkit-details-marker{
+  display:none;
+}
+.chart-settings[open] .chart-settings-trigger{
+  background: var(--fg-100);
+  color:#fff;
+  border-color: var(--fg-100);
+}
+.chart-settings-panel{
+  position:absolute;
+  top:50px;
+  right:0;
+  width:min(280px, 84vw);
+  display:grid;
+  gap:12px;
+  padding:14px;
+  background:#fff;
+  border:1px solid rgba(0,0,0,0.08);
+  border-radius:16px;
+  box-shadow: var(--shadow-2);
+}
+.chart-settings-row{
+  display:grid;
+  gap:6px;
+}
+.chart-settings-actions{
+  display:flex;
+  justify-content:flex-end;
+}
+.chart-controls-hidden{
+  display:none;
+}
 .brand{font-weight:700;}
 .site-main{max-width:1200px;margin:0 auto;padding:16px;display:grid;grid-template-columns:1fr;gap:16px;}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px;}
@@ -94,17 +187,20 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica N
     button.danger { background: transparent; border: 1px solid var(--danger); color: var(--danger); }
     button.danger:hover { background: var(--danger); color: #fff; }
   .sidebar { background: transparent; border-radius: var(--radius); padding: 14px; display: grid; gap: 12px; position: static; top: auto; overflow: visible; }
-    /* Levantar visualmente as caixas dentro da sidebar cerca de 1cm (≈38px)
-       Aplica-se aos cards principais e ao formulário (Resumo, Novo aporte, Gráfico) */
-    .sidebar > .card,
-    .sidebar > form {
-      transform: translateY(-1.2cm); /* unidade real de 1.2cm (~45px) */
-      /* fallback em pixels aproximados caso queira consistência cross-dpi */
-      /* transform: translateY(-45px); */
-    }
 
   /* note removed */
 .card { background: var(--panel); border: none; border-radius: var(--radius); padding: 16px; box-shadow: var(--shadow-1); overflow: visible; }
+.section-anchor {
+  position: relative;
+  top: -120px;
+  height: 0;
+}
+.section-panel[hidden] {
+  display: none !important;
+}
+.chart-main-card {
+  margin-top: 8px;
+}
   #filtersCard { transition: box-shadow 160ms ease, border-color 160ms ease; }
   #filtersCard.filters-active { border: 1px solid rgba(0,122,255,0.35); box-shadow: 0 10px 30px rgba(0,122,255,0.12); }
   .filters-meta { margin-top: 6px; font-size: 12px; display:flex; gap:8px; align-items:center; color: var(--muted); }
@@ -303,7 +399,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica N
     .msg .close { float: right; background: transparent; border: none; font-weight: 700; cursor: pointer; }
 
     /* Chart area */
-    .chart-controls { padding: 6px 16px; }
+    .chart-controls { padding: 0; }
     .panel canvas { width: 100% !important; height: 100% !important; display: block; }
 
     /* Forçar contêiner do gráfico a ter altura mínima/definida para evitar saltos no layout */
