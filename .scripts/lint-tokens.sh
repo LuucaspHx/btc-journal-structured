@@ -10,7 +10,7 @@ echo "🔍 Checking design system contracts..."
 # 1. Hex literal fora de tokens.css
 # grep -rn produz "ficheiro:linha:conteúdo" — exclui tokens.css inteiro
 # e linhas cujo conteúdo começa com comentário CSS (/* ou //)
-HEXCHECK=$(grep -rn '#[0-9a-fA-F]\{3,8\}' css/ --include="*.css" \
+HEXCHECK=$(grep -rn -E '#[0-9a-fA-F]{3,8}' css/ --include="*.css" \
   | grep -v '^css/tokens\.css:' \
   | grep -Ev ':[0-9]+:[[:blank:]]*/[/*]' || true)
 
@@ -21,7 +21,7 @@ if [ -n "$HEXCHECK" ]; then
 fi
 
 # 2. transition: all
-TRANSCHECK=$(grep -rn 'transition:\s*all' css/ --include="*.css" || true)
+TRANSCHECK=$(grep -rn -E 'transition:[[:space:]]*all' css/ --include="*.css" || true)
 if [ -n "$TRANSCHECK" ]; then
   echo "❌ transition: all proibido — especificar propriedades:"
   echo "$TRANSCHECK"
@@ -30,7 +30,7 @@ fi
 
 # 3. backdrop-filter sem glass-exception na mesma linha
 BDCHECK=$(grep -rn 'backdrop-filter' css/ --include="*.css" \
-  | grep -v '/\* glass-exception' || true)
+  | grep -v '/\* glass-exception:' || true)
 if [ -n "$BDCHECK" ]; then
   echo "❌ backdrop-filter sem '/* glass-exception: <razão> */' na mesma linha:"
   echo "$BDCHECK"
@@ -38,7 +38,7 @@ if [ -n "$BDCHECK" ]; then
 fi
 
 # 4. filter: url( — SVG distortion proibido
-FILTERCHECK=$(grep -rn 'filter:\s*url(' css/ --include="*.css" || true)
+FILTERCHECK=$(grep -rn -E 'filter:[[:space:]]*url\(' css/ --include="*.css" || true)
 if [ -n "$FILTERCHECK" ]; then
   echo "❌ filter: url() proibido (SVG distortion):"
   echo "$FILTERCHECK"
@@ -46,7 +46,7 @@ if [ -n "$FILTERCHECK" ]; then
 fi
 
 # 5. Cores inline em HTML
-INLINECHECK=$(grep -rn 'style="[^"]*color\s*:' index.html || true)
+INLINECHECK=$(grep -rn -E 'style="[^"]*color[[:space:]]*:' index.html || true)
 if [ -n "$INLINECHECK" ]; then
   echo "❌ Cor inline em HTML — mover para classe CSS:"
   echo "$INLINECHECK"
