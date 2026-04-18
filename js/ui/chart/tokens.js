@@ -36,4 +36,6 @@ export const chartTokens = {
   statusMuted: () => readToken('--color-status-muted'),
   bgSurface: () => readToken('--color-bg-surface'),
   bgPage: () => readToken('--color-bg-page'),
+  chartGrid: () => readToken('--color-chart-grid'),
+  chartCrosshair: () => readToken('--color-chart-crosshair'),
 };

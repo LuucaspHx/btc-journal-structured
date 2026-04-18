@@ -93,6 +93,10 @@
   --color-status-muted:    var(--primitive-gray-700);
   --color-status-muted-bg: var(--primitive-gray-850);
 
+  /* Chart-specific */
+  --color-chart-grid:      oklch(30% 0.014 264 / 12%);  /* grid lines — subtle on dark bg */
+  --color-chart-crosshair: oklch(44% 0.012 264 / 55%);  /* crosshair cursor line */
+
   /* Spacing semântico */
   --space-xs:  var(--primitive-space-1);
   --space-sm:  var(--primitive-space-2);

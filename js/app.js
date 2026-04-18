@@ -2683,7 +2683,7 @@ const chartCrosshairPlugin = {
     ctx.beginPath();
     ctx.setLineDash(Array.isArray(pluginOptions?.dash) ? pluginOptions.dash : [4, 4]);
     ctx.lineWidth = Number.isFinite(pluginOptions?.lineWidth) ? pluginOptions.lineWidth : 1;
-    ctx.strokeStyle = pluginOptions?.color || 'rgba(142, 142, 147, 0.55)';
+    ctx.strokeStyle = pluginOptions?.color || chartTokens.chartCrosshair();
     ctx.moveTo(x, area.top);
     ctx.lineTo(x, area.bottom);
     ctx.moveTo(area.left, y);
@@ -2733,11 +2733,11 @@ function buildChartOptions(series, options = {}) {
           autoSkip: true,
           maxTicksLimit: options.compact ? 6 : 12,
         },
-        grid: { color: 'rgba(255,255,255,0.05)' },
+        grid: { color: chartTokens.chartGrid() },
       },
       y: {
         ticks: { color: chartTokens.textMuted() },
-        grid: { color: 'rgba(255,255,255,0.05)' },
+        grid: { color: chartTokens.chartGrid() },
       },
     },
     plugins: {
@@ -2796,7 +2796,7 @@ function buildChartConfig(series, options = {}) {
     parsing: false,
     borderWidth: 1.5,
     borderColor: chartTokens.accent(),
-    backgroundColor: 'transparent',
+    backgroundColor: 'transparent' /* intentional: no fill under price line */,
     pointRadius(context) {
       return context.active ? 3 : 0;
     },
