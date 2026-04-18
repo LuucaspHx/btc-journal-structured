@@ -1,0 +1,139 @@
+/* ==========================================================================
+   DESIGN SYSTEM — FONTE DE VERDADE
+   Todos os valores primitivos e semânticos vivem aqui.
+   NUNCA usar valores primitivos directamente em style.css ou componentes.
+   ========================================================================== */
+
+/* --------------------------------------------------------------------------
+   PRIMITIVE TOKENS — valores base, sem semântica de uso
+   Referenciados apenas por tokens semânticos abaixo.
+   -------------------------------------------------------------------------- */
+:root {
+  /* Gray scale — tintado hue 264 (azul-acinzentado frio) */
+  --primitive-gray-1000: oklch(5%  0.008 264);
+  --primitive-gray-950:  oklch(8%  0.010 264);
+  --primitive-gray-900:  oklch(12% 0.012 264);
+  --primitive-gray-850:  oklch(16% 0.012 264);
+  --primitive-gray-800:  oklch(21% 0.014 264);
+  --primitive-gray-700:  oklch(30% 0.014 264);
+  --primitive-gray-600:  oklch(44% 0.012 264);
+  --primitive-gray-400:  oklch(62% 0.010 264);
+  --primitive-gray-200:  oklch(82% 0.007 264);
+  --primitive-gray-100:  oklch(92% 0.005 264);
+
+  /* Bitcoin Orange */
+  --primitive-orange-500: oklch(72% 0.18  55);
+  --primitive-orange-400: oklch(78% 0.16  55);
+  --primitive-orange-600: oklch(64% 0.19  55);
+  --primitive-orange-900: oklch(22% 0.06  55);
+
+  /* Status */
+  --primitive-green-500: oklch(70% 0.18 145);
+  --primitive-green-900: oklch(20% 0.06 145);
+  --primitive-red-500:   oklch(62% 0.22  25);
+  --primitive-red-900:   oklch(18% 0.07  25);
+  --primitive-amber-500: oklch(75% 0.17  75);
+  --primitive-amber-900: oklch(20% 0.06  75);
+
+  /* Spacing scale — 4pt base */
+  --primitive-space-1:  4px;
+  --primitive-space-2:  8px;
+  --primitive-space-3:  12px;
+  --primitive-space-4:  16px;
+  --primitive-space-6:  24px;
+  --primitive-space-8:  32px;
+  --primitive-space-12: 48px;
+  --primitive-space-16: 64px;
+  --primitive-space-24: 96px;
+}
+
+/* --------------------------------------------------------------------------
+   SEMANTIC TOKENS — interface pública do sistema
+   Estes são os tokens que style.css e componentes consomem.
+   -------------------------------------------------------------------------- */
+:root {
+  /* Surfaces */
+  --color-bg-page:          var(--primitive-gray-950);
+  --color-bg-surface:       var(--primitive-gray-900);
+  --color-bg-surface-2:     var(--primitive-gray-850);
+  --color-bg-elevated:      var(--primitive-gray-800);
+  --color-bg-overlay:       oklch(5% 0.008 264 / 80%);
+  --color-bg-accent-subtle: var(--primitive-orange-900);
+
+  /* Borders */
+  --color-border:        var(--primitive-gray-700);
+  --color-border-subtle: oklch(30% 0.014 264 / 40%);
+  --color-border-accent: var(--primitive-orange-500);
+
+  /* Text */
+  --color-text-primary:   var(--primitive-gray-100);
+  --color-text-secondary: var(--primitive-gray-200);
+  --color-text-muted:     var(--primitive-gray-400);
+  --color-text-disabled:  var(--primitive-gray-600);
+  --color-text-accent:    var(--primitive-orange-500);
+  --color-text-inverse:   var(--primitive-gray-950);
+
+  /* Interactive */
+  --color-interactive-accent:         var(--primitive-orange-500);
+  --color-interactive-accent-hover:   var(--primitive-orange-400);
+  --color-interactive-accent-pressed: var(--primitive-orange-600);
+  --color-interactive-accent-subtle:  var(--primitive-orange-900);
+
+  /* Focus — obrigatório em todos os elementos interactivos */
+  --color-focus-ring: var(--primitive-orange-500);
+  --focus-ring: 0 0 0 2px var(--color-bg-page), 0 0 0 4px var(--color-focus-ring);
+
+  /* Status */
+  --color-status-ok:       var(--primitive-green-500);
+  --color-status-ok-bg:    var(--primitive-green-900);
+  --color-status-warn:     var(--primitive-amber-500);
+  --color-status-warn-bg:  var(--primitive-amber-900);
+  --color-status-danger:   var(--primitive-red-500);
+  --color-status-danger-bg: var(--primitive-red-900);
+  --color-status-muted:    var(--primitive-gray-700);
+  --color-status-muted-bg: var(--primitive-gray-850);
+
+  /* Spacing semântico */
+  --space-xs:  var(--primitive-space-1);
+  --space-sm:  var(--primitive-space-2);
+  --space-md:  var(--primitive-space-4);
+  --space-lg:  var(--primitive-space-6);
+  --space-xl:  var(--primitive-space-8);
+  --space-2xl: var(--primitive-space-12);
+
+  /* Motion */
+  --duration-instant: 80ms;
+  --duration-fast:    160ms;
+  --duration-base:    260ms;
+  --duration-slow:    400ms;
+  --ease-out:    cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Typography scale */
+  --text-xs:   11px;
+  --text-sm:   12px;
+  --text-base: 14px;
+  --text-md:   16px;
+  --text-lg:   18px;
+
+  /* Backcompat aliases — manter durante migração, remover após style.css limpo */
+  --bg:     var(--color-bg-page);
+  --panel:  var(--color-bg-surface);
+  --ink:    var(--color-text-primary);
+  --muted:  var(--color-text-muted);
+  --line:   var(--color-border);
+  --accent: var(--color-interactive-accent);
+  --ok:     var(--color-status-ok);
+  --warn:   var(--color-status-warn);
+  --danger: var(--color-status-danger);
+  --green:  var(--color-status-ok);
+  --red:    var(--color-status-danger);
+  --amber:  var(--color-status-warn);
+  --brand:  var(--color-interactive-accent);
+  --fg-100: var(--color-text-primary);
+  --text:   var(--color-text-primary);
+  --radius: 14px;
+  --shadow-1: 0 4px 12px oklch(0% 0 0 / 30%);
+  --shadow-2: 0 8px 24px oklch(0% 0 0 / 40%);
+  --shadow:   var(--shadow-1);
+}
