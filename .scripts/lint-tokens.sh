@@ -12,7 +12,7 @@ echo "🔍 Checking design system contracts..."
 # e linhas cujo conteúdo começa com comentário CSS (/* ou //)
 HEXCHECK=$(grep -rn '#[0-9a-fA-F]\{3,8\}' css/ --include="*.css" \
   | grep -v '^css/tokens\.css:' \
-  | grep -Pv ':\d+:\s*/[/*]' || true)
+  | grep -Ev ':[0-9]+:[[:blank:]]*/[/*]' || true)
 
 if [ -n "$HEXCHECK" ]; then
   echo "❌ Hex literal fora de css/tokens.css:"
