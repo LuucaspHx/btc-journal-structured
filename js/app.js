@@ -52,6 +52,7 @@ import {
 } from './ui/import-export/render.js';
 import { createPriceService } from './services/price-service.js';
 import { bindChartPins } from './ui/chart/bind.js';
+import { chartTokens, readToken } from './ui/chart/tokens.js';
 
 const LS_KEY = 'btc_journal_state_v3';
 const CHART_MODE_STORAGE_KEY = 'btc_journal_chart_mode';
@@ -907,26 +908,6 @@ const fmtPercent = (v, digits = 2) => {
   if (!Number.isFinite(num)) return null;
   return `${num > 0 ? '+' : ''}${num.toFixed(digits)}%`;
 };
-
-function getThemeColor(variableName, fallback) {
-  try {
-    const value = getComputedStyle(document.documentElement).getPropertyValue(variableName);
-    return value ? value.trim() : fallback;
-  } catch (err) {
-    return fallback;
-  }
-}
-
-function getChartPalette() {
-  return {
-    brand: getThemeColor('--brand', '#f7931a'),
-    green: getThemeColor('--green', '#22c55e'),
-    red: getThemeColor('--red', '#ef4444'),
-    amber: getThemeColor('--amber', '#f59e0b'),
-    muted: getThemeColor('--muted', '#94a3b8'),
-    panel: getThemeColor('--panel', 'rgba(17,21,31,0.8)'),
-  };
-}
 
 function showLoadingOverlay(message = 'A carregar dados...') {
   const overlay = document.getElementById('loadingOverlay');
@@ -2529,7 +2510,7 @@ function createChartPoint(tx, currentPrice) {
   };
 }
 
-function buildEntryDataset(points = [], palette = {}) {
+function buildEntryDataset(points = []) {
   return {
     type: 'scatter',
     label: 'Entradas',
@@ -2546,16 +2527,16 @@ function buildEntryDataset(points = [], palette = {}) {
     },
     pointBackgroundColor(context) {
       const raw = context.raw || {};
-      if (raw.closed) return palette.muted || '#94a3b8';
-      if (raw.type === 'sell') return palette.amber || '#f59e0b';
-      if (raw.plPct > 0) return palette.green || '#22c55e';
-      if (raw.plPct < 0) return palette.red || '#ef4444';
-      return palette.amber || '#f59e0b';
+      if (raw.closed) return chartTokens.textMuted();
+      if (raw.type === 'sell') return chartTokens.warn();
+      if (raw.plPct > 0) return chartTokens.ok();
+      if (raw.plPct < 0) return chartTokens.danger();
+      return chartTokens.warn();
     },
     pointBorderColor(context) {
       const raw = context.raw || {};
-      if (raw.closed) return palette.muted || '#94a3b8';
-      return '#0b1220';
+      if (raw.closed) return chartTokens.textMuted();
+      return chartTokens.bgPage();
     },
     pointBorderWidth: 1,
     pointStyle(context) {
@@ -2568,12 +2549,12 @@ function buildEntryDataset(points = [], palette = {}) {
   };
 }
 
-function buildAverageDataset(length = 0, avgPrice = 0, palette = {}) {
+function buildAverageDataset(length = 0, avgPrice = 0) {
   return {
     label: 'Preço médio',
     type: 'line',
     data: Array.from({ length }, () => avgPrice),
-    borderColor: palette.amber || '#f59e0b',
+    borderColor: chartTokens.warn(),
     borderDash: [6, 6],
     borderWidth: 1,
     pointRadius: 0,
@@ -2712,7 +2693,7 @@ const chartCrosshairPlugin = {
   },
 };
 
-function buildChartOptions(series, palette, options = {}) {
+function buildChartOptions(series, options = {}) {
   const { avgPrice } = series;
   const { min, max } = ensureChartRange();
   const vsCurrency = options.vsLabel || currentFiatCurrency();
@@ -2743,11 +2724,11 @@ function buildChartOptions(series, palette, options = {}) {
     scales: {
       x: {
         type: 'time',
-        time: { unit: 'month', displayFormats: { month: 'short' } },
+        time: { unit: 'month', displayFormats: { month: 'MMM yyyy' } },
         min,
         max,
         ticks: {
-          color: palette.muted || '#94a3b8',
+          color: chartTokens.textMuted(),
           maxRotation: 0,
           autoSkip: true,
           maxTicksLimit: options.compact ? 6 : 12,
@@ -2755,14 +2736,14 @@ function buildChartOptions(series, palette, options = {}) {
         grid: { color: 'rgba(255,255,255,0.05)' },
       },
       y: {
-        ticks: { color: palette.muted || '#94a3b8' },
+        ticks: { color: chartTokens.textMuted() },
         grid: { color: 'rgba(255,255,255,0.05)' },
       },
     },
     plugins: {
-      legend: { labels: { color: palette.muted || '#94a3b8' } },
+      legend: { labels: { color: chartTokens.textMuted() } },
       btcJournalCrosshair: {
-        color: palette.muted || 'rgba(142, 142, 147, 0.55)',
+        color: chartTokens.textMuted(),
         dash: [4, 4],
         lineWidth: 1,
       },
@@ -2791,7 +2772,7 @@ function buildChartOptions(series, palette, options = {}) {
   };
 }
 
-function buildChartConfig(series, palette, options = {}) {
+function buildChartConfig(series, options = {}) {
   const mode = getChartMode();
   const includeCandles = options.includeCandles ?? mode === 'candles';
   const datasets = [];
@@ -2801,7 +2782,7 @@ function buildChartConfig(series, palette, options = {}) {
       label: 'OHLC',
       type: 'candlestick',
       data: candData,
-      color: { up: palette.green || '#22c55e', down: palette.red || '#ef4444' },
+      color: { up: chartTokens.ok(), down: chartTokens.danger() },
       order: 0,
     });
   }
@@ -2814,23 +2795,30 @@ function buildChartConfig(series, palette, options = {}) {
     data: pricePoints,
     parsing: false,
     borderWidth: 1.5,
-    borderColor: palette.brand || '#f7931a',
+    borderColor: chartTokens.accent(),
     backgroundColor: 'transparent',
-    pointRadius: 0,
+    pointRadius(context) {
+      return context.active ? 3 : 0;
+    },
+    pointHoverRadius: 4,
+    pointHitRadius: 10,
+    pointBackgroundColor: chartTokens.accent(),
+    pointBorderColor: chartTokens.bgSurface(),
+    pointBorderWidth: 1,
     tension: 0.2,
     order: 1,
   });
-  datasets.push(buildEntryDataset(series.points, palette));
+  datasets.push(buildEntryDataset(series.points));
 
   const useAnnotation = options.allowAnnotation && isAnnotationAvailable();
   if (!useAnnotation && options.addAverageDataset && series.avgPrice > 0) {
-    datasets.push(buildAverageDataset(series.labels.length, series.avgPrice, palette));
+    datasets.push(buildAverageDataset(series.labels.length, series.avgPrice));
   }
 
   const cfg = {
     type: 'line',
     data: { labels: series.labels, datasets },
-    options: buildChartOptions(series, palette, { ...options, vsLabel }),
+    options: buildChartOptions(series, { ...options, vsLabel }),
     plugins: [chartCrosshairPlugin],
   };
 
@@ -2842,15 +2830,15 @@ function buildChartConfig(series, palette, options = {}) {
           type: 'line',
           yMin: series.avgPrice,
           yMax: series.avgPrice,
-          borderColor: palette.amber || '#f59e0b',
+          borderColor: chartTokens.warn(),
           borderWidth: 1,
           borderDash: [6, 6],
           label: {
             enabled: true,
             content: `PM ${fmtCurrency(series.avgPrice, vsLabel)}`,
             position: 'end',
-            backgroundColor: palette.panel || 'rgba(0,0,0,0.6)',
-            color: palette.amber || '#f59e0b',
+            backgroundColor: chartTokens.bgSurface(),
+            color: chartTokens.warn(),
             padding: 4,
           },
         },
@@ -2875,9 +2863,8 @@ function renderChartToCanvas(canvasId = 'btcChart', visibleTxs = getVisibleTxs()
     scheduleOhlcFetch(fetchRange, vs, () => renderChartToCanvas(canvasId, visibleTxs));
     return;
   }
-  const palette = getChartPalette();
   const series = buildChartSeries(visibleTxs);
-  const cfg = buildChartConfig(series, palette, {
+  const cfg = buildChartConfig(series, {
     includeCandles: getChartMode() === 'candles',
     allowAnnotation: true,
     addAverageDataset: true,
@@ -3294,9 +3281,8 @@ function renderChart(visibleTxs = getVisibleTxs()) {
     scheduleOhlcFetch(fetchRange, vs, () => renderChart());
     return;
   }
-  const palette = getChartPalette();
   const series = buildChartSeries(visibleTxs);
-  const cfg = buildChartConfig(series, palette, {
+  const cfg = buildChartConfig(series, {
     includeCandles: getChartMode() === 'candles',
     allowAnnotation: true,
     addAverageDataset: true,
@@ -3569,8 +3555,8 @@ function initLiveChart() {
         {
           label: 'BTC (live)',
           data,
-          borderColor: 'var(--accent)',
-          backgroundColor: 'rgba(0,122,255,0.08)',
+          borderColor: chartTokens.accent(),
+          backgroundColor: readToken('--color-interactive-accent-subtle'),
           tension: 0.2,
           pointRadius: 3,
         },
