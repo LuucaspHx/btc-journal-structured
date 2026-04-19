@@ -669,6 +669,62 @@ header.site-header nav{
   display: grid;
   gap: 16px;
 }
+/* ===== /typeset — typography system contexts ===== */
+
+/* Body: design system font + dark-bg leading (elevated vs light backgrounds) */
+body {
+  font-family: var(--font-ui);
+  line-height: var(--leading-normal);
+}
+
+/* Headings: tighter leading, subtle negative tracking */
+h1, h2, h3, h4 {
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-tight);
+}
+
+/* KPI / stat values: data font + tabular alignment — no FOUT jitter on numbers */
+.kpi .value,
+.audit-pill strong,
+.goal-detail-stat strong {
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--leading-tight);
+}
+
+/* P&L and transaction amounts */
+.pl,
+.pnl-pct,
+.pnl-value {
+  font-family: var(--font-data);
+  font-variant-numeric: tabular-nums;
+}
+
+/* TXID hashes and blockchain links */
+.tx-status-link {
+  font-family: var(--font-data);
+  letter-spacing: 0.02em;
+}
+
+/* Export / import code preview */
+#exportPreview { font-family: var(--font-data); }
+
+/* P&L pin modal — all data output */
+.pin-modal-box { font-family: var(--font-data); }
+.pin-modal-row,
+.pin-modal-val,
+.pin-modal-pnl  { font-variant-numeric: tabular-nums; }
+
+/* KPI labels: uppercase + tracked, consistent with audit-pill labels */
+.kpi .label {
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-caps);
+  font-weight: var(--font-weight-medium);
+}
+
+/* Audit pill labels: use system tracking token */
+.audit-pill span { letter-spacing: var(--tracking-caps); }
+
 /* ===== Keyboard navigation — :focus-visible ===== */
 
 /* Design system focus ring: keyboard Tab only, never mouse click.
