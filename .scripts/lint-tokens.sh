@@ -15,9 +15,9 @@ STAGED_CSS=$(git diff --cached --name-only --diff-filter=ACMR \
 STAGED_HTML=$(git diff --cached --name-only --diff-filter=ACMR \
   | grep '\.html$' || true)
 
-# Get staged JS files under js/ui/ and js/services/
+# Get staged JS files: Chart.js consumers (app.js) and ui/services modules
 STAGED_JS=$(git diff --cached --name-only --diff-filter=ACMR \
-  | grep -E '^js/(ui|services)/' || true)
+  | grep -E '^js/(ui|services)/|^js/app\.js$' || true)
 
 # Iterate files safely — handles filenames with spaces.
 # Outputs "filename:linenum:content" (grep -H forces filename prefix).
@@ -92,8 +92,8 @@ if [ -n "$STAGED_HTML" ]; then
   fi
 fi
 
-# Rule 6: Primitive color literals in staged JS (js/ui/ and js/services/)
-# Colors in these files must go through chartTokens or readToken() — not inline literals.
+# Rule 6: Primitive color literals in staged JS (app.js, js/ui/, js/services/)
+# Any JS that builds Chart.js datasets/options must use chartTokens or readToken().
 if [ -n "$STAGED_JS" ]; then
   JSCOLORCHECK=$(_grep_files "$STAGED_JS" -n -E "rgba?\([[:space:]]*[0-9]|#[0-9a-fA-F]{3,8}" \
     | grep -Ev ':[0-9]+:[[:blank:]]*//' || true)
