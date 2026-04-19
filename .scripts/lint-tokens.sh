@@ -7,24 +7,40 @@ set -e
 ERRORS=0
 
 # Get staged CSS files (excluding tokens.css — it's the SoT, primitives allowed)
-STAGED_CSS=$(git diff --cached --name-only --diff-filter=ACM \
+STAGED_CSS=$(git diff --cached --name-only --diff-filter=ACMR \
   | grep '\.css$' \
   | grep -v '^css/tokens\.css$' || true)
 
 # Get staged HTML files
-STAGED_HTML=$(git diff --cached --name-only --diff-filter=ACM \
+STAGED_HTML=$(git diff --cached --name-only --diff-filter=ACMR \
   | grep '\.html$' || true)
 
 # Get staged JS files under js/ui/ and js/services/
-STAGED_JS=$(git diff --cached --name-only --diff-filter=ACM \
+STAGED_JS=$(git diff --cached --name-only --diff-filter=ACMR \
   | grep -E '^js/(ui|services)/' || true)
+
+# Iterate files safely — handles filenames with spaces.
+# Outputs "filename:linenum:content" (grep -H forces filename prefix).
+_grep_files() {
+  local files="$1"
+  shift
+  while IFS= read -r file; do
+    [ -n "$file" ] || continue
+    grep -H "$@" -- "$file" 2>/dev/null || true
+  done <<< "$files"
+}
+
+# Fix 2: early-exit when nothing relevant is staged
+if [ -z "$STAGED_CSS" ] && [ -z "$STAGED_HTML" ] && [ -z "$STAGED_JS" ]; then
+  echo "ℹ️  No CSS/HTML/JS files staged. No design system checks needed."
+  exit 0
+fi
 
 echo "🔍 Checking design system contracts (staged files only)..."
 
 # Rule 1: Hex literal in staged CSS (excluding tokens.css)
 if [ -n "$STAGED_CSS" ]; then
-  HEXCHECK=$(echo "$STAGED_CSS" \
-    | xargs grep -n -E '#[0-9a-fA-F]{3,8}' 2>/dev/null \
+  HEXCHECK=$(_grep_files "$STAGED_CSS" -n -E '#[0-9a-fA-F]{3,8}' \
     | grep -Ev ':[0-9]+:[[:blank:]]*/[/*]' || true)
   if [ -n "$HEXCHECK" ]; then
     echo "❌ Hex literal in staged CSS (use semantic tokens from tokens.css):"
@@ -35,8 +51,7 @@ fi
 
 # Rule 2: transition: all in staged CSS
 if [ -n "$STAGED_CSS" ]; then
-  TRANSCHECK=$(echo "$STAGED_CSS" \
-    | xargs grep -n -E 'transition:[[:space:]]*all' 2>/dev/null || true)
+  TRANSCHECK=$(_grep_files "$STAGED_CSS" -n -E 'transition:[[:space:]]*all' || true)
   if [ -n "$TRANSCHECK" ]; then
     echo "❌ transition: all — specify properties explicitly:"
     echo "$TRANSCHECK"
@@ -46,8 +61,7 @@ fi
 
 # Rule 3: backdrop-filter without /* glass-exception: */ in staged CSS
 if [ -n "$STAGED_CSS" ]; then
-  BDCHECK=$(echo "$STAGED_CSS" \
-    | xargs grep -n 'backdrop-filter' 2>/dev/null \
+  BDCHECK=$(_grep_files "$STAGED_CSS" -n 'backdrop-filter' \
     | grep -v '/\* glass-exception:' || true)
   if [ -n "$BDCHECK" ]; then
     echo "❌ backdrop-filter without '/* glass-exception: <reason> */' on same line:"
@@ -58,8 +72,7 @@ fi
 
 # Rule 4: filter: url( in staged CSS
 if [ -n "$STAGED_CSS" ]; then
-  FILTERCHECK=$(echo "$STAGED_CSS" \
-    | xargs grep -n -E 'filter:[[:space:]]*url\(' 2>/dev/null || true)
+  FILTERCHECK=$(_grep_files "$STAGED_CSS" -n -E 'filter:[[:space:]]*url\(' || true)
   if [ -n "$FILTERCHECK" ]; then
     echo "❌ filter: url() — SVG distortion filters are prohibited:"
     echo "$FILTERCHECK"
@@ -71,11 +84,22 @@ fi
 # Scope: color properties only (background-color, color, border-color, etc.)
 # Structural inline styles (display, padding, etc.) are tracked separately — not in scope here.
 if [ -n "$STAGED_HTML" ]; then
-  INLINECHECK=$(echo "$STAGED_HTML" \
-    | xargs grep -n -E 'style="[^"]*color[[:space:]]*:' 2>/dev/null || true)
+  INLINECHECK=$(_grep_files "$STAGED_HTML" -n -E 'style="[^"]*color[[:space:]]*:' || true)
   if [ -n "$INLINECHECK" ]; then
     echo "❌ Inline color in HTML — move to CSS class:"
     echo "$INLINECHECK"
+    ERRORS=$((ERRORS + 1))
+  fi
+fi
+
+# Rule 6: Primitive color literals in staged JS (js/ui/ and js/services/)
+# Colors in these files must go through chartTokens or readToken() — not inline literals.
+if [ -n "$STAGED_JS" ]; then
+  JSCOLORCHECK=$(_grep_files "$STAGED_JS" -n -E "rgba?\([[:space:]]*[0-9]|#[0-9a-fA-F]{3,8}" \
+    | grep -Ev ':[0-9]+:[[:blank:]]*//' || true)
+  if [ -n "$JSCOLORCHECK" ]; then
+    echo "❌ Primitive color literal in staged JS — use chartTokens or readToken():"
+    echo "$JSCOLORCHECK"
     ERRORS=$((ERRORS + 1))
   fi
 fi
@@ -85,11 +109,6 @@ if [ "$ERRORS" -gt 0 ]; then
   echo "❌ $ERRORS contract violation(s) in staged files. Commit blocked."
   echo "   For full backlog audit: bash .scripts/lint-tokens-full.sh"
   exit 1
-fi
-
-if [ -z "$STAGED_CSS" ] && [ -z "$STAGED_HTML" ] && [ -z "$STAGED_JS" ]; then
-  echo "ℹ️  No CSS/HTML/JS files staged. No design system checks needed."
-  exit 0
 fi
 
 echo "✅ All design system contracts pass (staged files)."

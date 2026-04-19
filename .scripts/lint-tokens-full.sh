@@ -57,6 +57,17 @@ if [ -n "$INLINECHECK" ]; then
   ERRORS=$((ERRORS + 1))
 fi
 
+# Rule 6: Primitive color literals in js/ui/ and js/services/
+JSCOLORCHECK=$(grep -rn -E "rgba?\([[:space:]]*[0-9]|#[0-9a-fA-F]{3,8}" \
+  js/ui/ js/services/ 2>/dev/null \
+  | grep -Ev ':[0-9]+:[[:blank:]]*//' || true)
+if [ -n "$JSCOLORCHECK" ]; then
+  echo "❌ Primitive color literals in js/ui/ or js/services/ (migration backlog):"
+  echo "$JSCOLORCHECK"
+  echo ""
+  ERRORS=$((ERRORS + 1))
+fi
+
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 if [ "$ERRORS" -gt 0 ]; then
   echo "❌ $ERRORS rule(s) with violations (full-tree backlog)."
