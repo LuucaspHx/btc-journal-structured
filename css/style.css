@@ -345,7 +345,7 @@ header.site-header nav{
       color: var(--muted); float: right; font-size: 28px; font-weight: bold;
       cursor: pointer;
     }
-    .close-button:hover, .close-button:focus {
+    .close-button:hover, .close-button:focus-visible {
       color: var(--text); text-decoration: none; cursor: pointer;
     }
     .modal-actions { display:flex; gap:10px; justify-content:flex-end; }
@@ -669,4 +669,24 @@ header.site-header nav{
   display: grid;
   gap: 16px;
 }
+/* ===== Keyboard navigation — :focus-visible ===== */
+
+/* Design system focus ring: keyboard Tab only, never mouse click.
+ * The browser's :focus-visible heuristic fires on keyboard navigation
+ * but not on pointer events — so this never shows on click.
+ * The existing `outline: none` on select/input/button (line 149) suppresses
+ * the browser default on mouse; this rule restores it for keyboard only. */
+:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 3px;
+}
+
+/* Pill-shaped elements: tighter offset so the ring sits closer */
+.section-menu-btn:focus-visible,
+.tab-btn:focus-visible,
+.audit-filters button:focus-visible,
+.goal-chip-list .goal-chip:focus-visible {
+  outline-offset: 2px;
+}
+
 .test-violation { color: #ff0000; }
