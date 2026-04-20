@@ -779,13 +779,15 @@ h1, h2, h3, h4 {
     max-width: none;
   }
 
-  /* Chart: slightly shorter on phone to preserve screen for data */
-  .chart-body {
+  /* Chart: slightly shorter on phone — override both generic and card-specific rules */
+  .chart-body,
+  .card.sector.chart .chart-body {
     min-height: 200px;
+    height: 240px;
   }
 
-  /* Header: tighter horizontal padding on narrow screens */
-  .site-header {
+  /* Header: match base selector specificity (header.site-header beats .site-header) */
+  header.site-header {
     padding: 10px 12px;
   }
 
