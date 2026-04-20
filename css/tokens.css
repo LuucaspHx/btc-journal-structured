@@ -34,6 +34,8 @@
   --primitive-red-900:   oklch(18% 0.07  25);
   --primitive-amber-500: oklch(75% 0.17  75);
   --primitive-amber-900: oklch(20% 0.06  75);
+  --primitive-blue-500:  oklch(60% 0.20 265);
+  --primitive-blue-900:  oklch(20% 0.08 265);
 
   /* Spacing scale — 4pt base */
   --primitive-space-1:  4px;
@@ -86,6 +88,8 @@
   /* Status */
   --color-status-ok:       var(--primitive-green-500);
   --color-status-ok-bg:    var(--primitive-green-900);
+  --color-status-info:     var(--primitive-blue-500);
+  --color-status-info-bg:  var(--primitive-blue-900);
   --color-status-warn:     var(--primitive-amber-500);
   --color-status-warn-bg:  var(--primitive-amber-900);
   --color-status-danger:   var(--primitive-red-500);
