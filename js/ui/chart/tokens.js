@@ -7,15 +7,16 @@
  * Se uma cor não existe como token semântico, criar o token primeiro.
  */
 
-const _root = document.documentElement;
-
 /**
  * Lê o valor de um CSS custom property do :root.
+ * Referencia document.documentElement em runtime — não em import time.
+ * Seguro em Node/Jest (retorna '') e em browser (lê o valor real).
  * @param {string} name — nome do token, ex: '--color-interactive-accent'
  * @returns {string} valor do token, trimmed
  */
 export function readToken(name) {
-  return getComputedStyle(_root).getPropertyValue(name).trim();
+  if (typeof document === 'undefined') return '';
+  return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
 /**
