@@ -1,11 +1,20 @@
-import { getTxDate, getTxFiat, getTxNote, getTxPrice, getTxSats } from './helpers.js';
+import {
+  getTxDate,
+  getTxFiat,
+  getTxNote,
+  getTxPrice,
+  getTxSats,
+  formatPnL,
+  formatCurrentValue,
+} from './helpers.js';
+import { calcEntryPnL } from '../../core/calculations.js';
 
 export function updateFiltersMeta({
   visibleCount = 0,
   totalCount = 0,
   activeCount = 0,
   sort = 'date-desc',
-  describeSortLabel
+  describeSortLabel,
 } = {}) {
   const card = document.getElementById('filtersCard');
   const meta = document.getElementById('filtersMeta');
@@ -44,9 +53,11 @@ export function renderTable({
   list = [],
   totalCount = 0,
   activeFiltersCount = 0,
+  currentPrice = null,
+  currency = 'USD',
   createTxStatusBadge,
   fmtInt,
-  fmtPrice
+  fmtPrice,
 } = {}) {
   const tbody = document.getElementById('tx-body');
   if (!tbody) return;
@@ -55,14 +66,15 @@ export function renderTable({
   const rows = Array.isArray(list) ? list : [];
   const metaEl = document.getElementById('transactionsMeta');
   if (metaEl) {
-    if (totalCount && rows.length !== totalCount) metaEl.textContent = `${rows.length} de ${totalCount} aportes`;
+    if (totalCount && rows.length !== totalCount)
+      metaEl.textContent = `${rows.length} de ${totalCount} aportes`;
     else metaEl.textContent = `${rows.length} aporte${rows.length === 1 ? '' : 's'}`;
   }
 
   if (rows.length === 0) {
     const tr = document.createElement('tr');
     const td = document.createElement('td');
-    td.colSpan = 7;
+    td.colSpan = 8;
     td.className = 'muted';
     td.textContent = activeFiltersCount
       ? 'Nenhuma transação corresponde aos filtros.'
@@ -85,6 +97,24 @@ export function renderTable({
     const tdPrice = document.createElement('td');
     tdPrice.className = 'num';
     tdPrice.textContent = fmtPrice(getTxPrice(tx));
+
+    const tdPnl = document.createElement('td');
+    tdPnl.className = 'num pnl-cell';
+    if (currentPrice != null) {
+      const pnlData = calcEntryPnL(tx, currentPrice);
+      const fmt = formatPnL(pnlData, currency);
+      const valueEl = document.createElement('span');
+      valueEl.className = 'pnl-value';
+      valueEl.textContent = fmt.valueText;
+      const pctEl = document.createElement('span');
+      pctEl.className = `pnl-pct ${pnlData.pnlValue > 0 ? 'pnl-profit' : pnlData.pnlValue < 0 ? 'pnl-loss' : 'pnl-neutral'}`;
+      pctEl.textContent = `${fmt.sign} ${fmt.pctText}`;
+      tdPnl.appendChild(valueEl);
+      tdPnl.appendChild(pctEl);
+    } else {
+      tdPnl.textContent = '—';
+      tdPnl.className = 'num pnl-cell muted';
+    }
 
     const tdStatus = document.createElement('td');
     tdStatus.className = 'tx-status-cell';
@@ -132,6 +162,7 @@ export function renderTable({
     tr.appendChild(tdDate);
     tr.appendChild(tdSats);
     tr.appendChild(tdPrice);
+    tr.appendChild(tdPnl);
     tr.appendChild(tdStatus);
     tr.appendChild(tdClassification);
     tr.appendChild(tdNote);
@@ -149,13 +180,13 @@ export function renderStats({
   fmtCurrency,
   fmtSignedCurrency,
   fmtPercent,
-  fmtInt
+  fmtInt,
 } = {}) {
   const container = document.getElementById('stats');
   if (!container) return;
 
   const txs = Array.isArray(list) ? list : [];
-  const openTxs = txs.filter(tx => !tx?.closed);
+  const openTxs = txs.filter((tx) => !tx?.closed);
   const totalSats = openTxs.reduce((acc, tx) => acc + getTxSats(tx), 0);
   const investedFiat = openTxs.reduce((acc, tx) => {
     const fiat = getTxFiat(tx);
@@ -168,9 +199,16 @@ export function renderStats({
   const hasHoldings = btcAmount > 0;
   const avgPrice = btcAmount > 0 ? investedFiat / btcAmount : 0;
   const marketPrice = getLatestMarketPrice();
-  const currentValue = marketPrice && hasHoldings ? marketPrice * btcAmount : (hasHoldings ? null : 0);
-  const pnlAbs = currentValue != null && hasHoldings ? currentValue - investedFiat : (hasHoldings ? null : 0);
-  const pnlPct = pnlAbs != null && hasHoldings && investedFiat > 0 ? (pnlAbs / investedFiat) * 100 : (hasHoldings ? null : 0);
+  const currentValue =
+    marketPrice && hasHoldings ? marketPrice * btcAmount : hasHoldings ? null : 0;
+  const pnlAbs =
+    currentValue != null && hasHoldings ? currentValue - investedFiat : hasHoldings ? null : 0;
+  const pnlPct =
+    pnlAbs != null && hasHoldings && investedFiat > 0
+      ? (pnlAbs / investedFiat) * 100
+      : hasHoldings
+        ? null
+        : 0;
   const currency = currentFiatCurrency();
   const hasOpenPositions = openTxs.length > 0;
   const zeroCurrency = fmtCurrency(0, currency);
@@ -184,12 +222,35 @@ export function renderStats({
     el.textContent = value ?? fallback;
   };
 
-  setKpiValue('kpiInvested', hasOpenPositions ? (fmtCurrency(investedFiat, currency) ?? zeroCurrency) : null);
+  setKpiValue(
+    'kpiInvested',
+    hasOpenPositions ? (fmtCurrency(investedFiat, currency) ?? zeroCurrency) : null
+  );
   setKpiValue('kpiSats', totalSats > 0 ? fmtInt(totalSats) : '0');
-  setKpiValue('kpiAvg', avgPrice > 0 ? fmtCurrency(avgPrice, currency) : (allowZeroFallback ? zeroCurrency : null));
-  setKpiValue('kpiCurrent', hasOpenPositions && currentValue != null ? fmtCurrency(currentValue, currency) : (allowZeroFallback ? zeroCurrency : null));
-  setKpiValue('kpiPL', hasOpenPositions && pnlAbs != null ? fmtSignedCurrency(pnlAbs, currency) : (allowZeroFallback ? zeroSignedCurrency : null));
-  setKpiValue('kpiPLPct', hasOpenPositions && pnlPct != null ? fmtPercent(pnlPct) : (allowZeroFallback ? zeroPercent : null));
+  setKpiValue(
+    'kpiAvg',
+    avgPrice > 0 ? fmtCurrency(avgPrice, currency) : allowZeroFallback ? zeroCurrency : null
+  );
+  setKpiValue(
+    'kpiCurrent',
+    hasOpenPositions && currentValue != null
+      ? fmtCurrency(currentValue, currency)
+      : allowZeroFallback
+        ? zeroCurrency
+        : null
+  );
+  setKpiValue(
+    'kpiPL',
+    hasOpenPositions && pnlAbs != null
+      ? fmtSignedCurrency(pnlAbs, currency)
+      : allowZeroFallback
+        ? zeroSignedCurrency
+        : null
+  );
+  setKpiValue(
+    'kpiPLPct',
+    hasOpenPositions && pnlPct != null ? fmtPercent(pnlPct) : allowZeroFallback ? zeroPercent : null
+  );
 
   try {
     const planBtn = document.getElementById('openPlanilhaBtn');
@@ -217,7 +278,8 @@ export function renderStats({
   } catch (err) {
     // noop
   }
-  meta.textContent = totalCount && txs.length !== totalCount
-    ? `Mostrando ${txs.length} de ${totalCount} aportes (filtros ativos).`
-    : `Total de aportes: ${totalCount}`;
+  meta.textContent =
+    totalCount && txs.length !== totalCount
+      ? `Mostrando ${txs.length} de ${totalCount} aportes (filtros ativos).`
+      : `Total de aportes: ${totalCount}`;
 }

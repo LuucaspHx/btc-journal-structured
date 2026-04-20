@@ -1,4 +1,4 @@
-import { satsFrom, satsToBtc, pmMedio } from '../js/core/calculations.js';
+import { satsFrom, satsToBtc, pmMedio, calcEntryPnL } from '../js/core/calculations.js';
 
 describe('core/calculations', () => {
   test('satsFrom calcula sats líquidos considerando fee', () => {
@@ -20,5 +20,62 @@ describe('core/calculations', () => {
     const totalFiat = (1000 + 10) + (500 + 5);
     const totalBtc = (2e7 + 1e7) / 1e8;
     expect(avg).toBeCloseTo(totalFiat / totalBtc);
+  });
+});
+
+describe('calcEntryPnL', () => {
+  test('retorna isProfit true quando valor atual > custo', () => {
+    const entry = { sats: 100000, fiatAmount: 80 };
+    const result = calcEntryPnL(entry, 100000);
+    // valor atual = (100000/1e8) * 100000 = 100
+    expect(result.currentValue).toBeCloseTo(100);
+    expect(result.pnlValue).toBeCloseTo(20);
+    expect(result.pnlPct).toBeCloseTo(25);
+    expect(result.isProfit).toBe(true);
+  });
+
+  test('retorna isProfit false quando valor atual < custo', () => {
+    const entry = { sats: 100000, fiatAmount: 80 };
+    const result = calcEntryPnL(entry, 60000);
+    expect(result.currentValue).toBeCloseTo(60);
+    expect(result.pnlValue).toBeCloseTo(-20);
+    expect(result.pnlPct).toBeCloseTo(-25);
+    expect(result.isProfit).toBe(false);
+  });
+
+  test('funciona com shape híbrido fiat (sem fiatAmount)', () => {
+    const entry = { sats: 100000, fiat: 80 };
+    const result = calcEntryPnL(entry, 100000);
+    expect(result.pnlValue).toBeCloseTo(20);
+  });
+
+  test('funciona com shape híbrido btcAmount (sem sats)', () => {
+    const entry = { btcAmount: 0.001, fiatAmount: 80 };
+    const result = calcEntryPnL(entry, 100000);
+    expect(result.currentValue).toBeCloseTo(100);
+  });
+
+  test('retorna zeros quando currentPrice é 0', () => {
+    const entry = { sats: 100000, fiatAmount: 80 };
+    const result = calcEntryPnL(entry, 0);
+    expect(result.currentValue).toBe(0);
+    expect(result.pnlValue).toBeCloseTo(-80);
+    expect(result.isProfit).toBe(false);
+  });
+
+  test('retorna zeros quando entry está vazia (sats=0 e fiat=0)', () => {
+    const entry = { sats: 0, fiatAmount: 0 };
+    const result = calcEntryPnL(entry, 100000);
+    expect(result.currentValue).toBe(0);
+    expect(result.pnlValue).toBe(0);
+    expect(result.pnlPct).toBe(0);
+  });
+
+  test('retorna pnlPct null quando custo não pode ser derivado (sats>0, fiat=0)', () => {
+    const entry = { sats: 100000 }; // no fiatAmount, no fiat, no price
+    const result = calcEntryPnL(entry, 100000);
+    expect(result.currentValue).toBeCloseTo(100);
+    expect(result.pnlPct).toBeNull();
+    expect(result.isProfit).toBe(true); // pnlValue = 100 - 0 = 100 > 0
   });
 });

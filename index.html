@@ -7,10 +7,15 @@
     <title>BTC Journal — Esqueleto</title>
     <!-- Chart.js + time adapter (date-fns) -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/date-fns@3.6.0/dist/date-fns.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/date-fns@3.6.0/cdn.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@4.0.0/dist/chartjs-chart-financial.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-chart-financial@0.2.1/dist/chartjs-chart-financial.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+    <!-- Web fonts: Geist (UI) + Geist Mono (data/TXID/amounts) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/tokens.css" />
     <link rel="stylesheet" href="css/style.css" />
   </head>
   <body>
@@ -19,9 +24,54 @@
     <header class="site-header">
       <h1>BTC Journal</h1>
       <nav>
-        <!-- export/import moved to footer -->
+        <div class="chart-controls">
+          <details class="chart-settings">
+            <summary class="chart-settings-trigger" aria-label="Configurações do gráfico">⚙</summary>
+            <div class="chart-settings-panel">
+              <div class="chart-settings-row">
+                <label class="muted" for="vsCurrency">Moeda</label>
+                <select id="vsCurrency">
+                  <option value="eur">EUR</option>
+                  <option value="usd" selected>USD</option>
+                  <option value="brl">BRL</option>
+                </select>
+              </div>
+              <div class="chart-settings-row">
+                <label class="muted" for="yearSelect">Ano</label>
+                <select id="yearSelect"></select>
+              </div>
+              <div class="chart-settings-row">
+                <label class="muted" for="chartMode">Visão</label>
+                <select id="chartMode">
+                  <option value="line" selected>Linha</option>
+                  <option value="candles">Velas (OHLC)</option>
+                </select>
+              </div>
+              <div class="chart-settings-actions">
+                <button id="resetBtn" class="ghost" type="button">Limpar dados (local)</button>
+              </div>
+            </div>
+          </details>
+          <div class="chart-controls-hidden" aria-hidden="true">
+            <button id="openPlanilhaBtn" class="btn ghost" disabled aria-disabled="true" title="Marcadores de Aportes (desativado)" tabindex="-1">Marcadores de Aportes</button>
+            <button id="openChartGlassBtn" class="btn" tabindex="-1">Ir para gráfico</button>
+            <label class="muted">
+              <input type="checkbox" id="chartOnlyFiltered" checked />
+              Aplicar filtros no gráfico
+            </label>
+          </div>
+        </div>
       </nav>
     </header>
+
+    <nav id="sectionMenu" class="section-menu" aria-label="Navegação de secções">
+      <button type="button" class="section-menu-btn active" data-section="chart">Gráfico</button>
+      <button type="button" class="section-menu-btn" data-section="summary">Resumo</button>
+      <button type="button" class="section-menu-btn" data-section="entry">Novo aporte</button>
+      <button type="button" class="section-menu-btn" data-section="transactions">Transações</button>
+      <button type="button" class="section-menu-btn" data-section="audit">Auditoria</button>
+      <button type="button" class="section-menu-btn" data-section="goals">Metas</button>
+    </nav>
 
     <div id="messageContainer" class="message-container" aria-live="polite"></div>
     <div id="confirmModal" class="confirm-modal" role="dialog" aria-modal="true" style="display:none;">
@@ -141,29 +191,6 @@
       </div>
   </section>
 
-    <div class="chart-controls" style="display:flex;gap:10px;align-items:center;padding:12px 16px;">
-      <label class="muted">Moeda</label>
-      <select id="vsCurrency">
-        <option value="eur">EUR</option>
-        <option value="usd" selected>USD</option>
-        <option value="brl">BRL</option>
-      </select>
-      <label class="muted">Ano</label>
-      <select id="yearSelect"></select>
-      <label class="muted">Visão</label>
-      <select id="chartMode">
-        <option value="line" selected>Linha</option>
-        <option value="candles">Velas (OHLC)</option>
-      </select>
-      <button id="resetBtn" class="ghost">Limpar dados (local)</button>
-  <button id="openPlanilhaBtn" class="btn ghost" disabled aria-disabled="true" title="Marcadores de Aportes (desativado)">Marcadores de Aportes</button>
-      <button id="openChartGlassBtn" class="btn">Ir para gráfico</button>
-      <label class="muted" style="display:flex;align-items:center;gap:6px; margin-left:auto;">
-        <input type="checkbox" id="chartOnlyFiltered" checked />
-        Aplicar filtros no gráfico
-      </label>
-    </div>
-
     <div id="chartGlassOverlay" class="chart-glass" aria-hidden="true" style="display:none;">
       <div class="chart-glass-inner">
         <button id="closeChartGlassBtn" class="btn ghost">Fechar</button>
@@ -173,7 +200,7 @@
 
     <div class="wrap">
       <aside class="sidebar">
-        <div class="card stack glass-card">
+        <div class="card stack glass-card section-panel" id="summarySection" data-section-panel="summary">
           <div style="font-weight:800;">Resumo</div>
           <div id="stats" class="kpiBar">
             <div class="kpi">
@@ -209,8 +236,9 @@
           </div>
         </div>
 
-        <div class="card stack glass-card" id="filtersCard">
-          <div style="font-weight:800;">Filtros rápidos</div>
+        <div class="card stack glass-card section-panel" id="filtersCard" data-section-panel="transactions">
+          <div id="filtersSection" class="section-anchor" aria-hidden="true"></div>
+          <div style="font-weight:800;">Filtros de transações</div>
           <form id="filters-form" class="stack" autocomplete="off">
             <div class="row">
               <div class="stack">
@@ -224,32 +252,8 @@
             </div>
             <div class="row">
               <div class="stack">
-                <label class="muted" for="filter-min-sats">Min. sats</label>
-                <input type="number" id="filter-min-sats" min="0" step="1" placeholder="ex: 100000" />
-              </div>
-              <div class="stack">
                 <label class="muted" for="filter-search">Busca</label>
                 <input type="text" id="filter-search" placeholder="nota, TXID, carteira..." />
-              </div>
-            </div>
-            <div class="row">
-              <div class="stack">
-                <label class="muted" for="filter-min-price">Preço mínimo</label>
-                <input type="number" id="filter-min-price" min="0" step="0.01" placeholder="ex: 25000" />
-              </div>
-              <div class="stack">
-                <label class="muted" for="filter-max-price">Preço máximo</label>
-                <input type="number" id="filter-max-price" min="0" step="0.01" placeholder="ex: 80000" />
-              </div>
-            </div>
-            <div class="row">
-              <div class="stack">
-                <label class="muted" for="filter-type">Tipo</label>
-                <select id="filter-type">
-                  <option value="all" selected>Todos</option>
-                  <option value="buy">Compra</option>
-                  <option value="sell">Venda</option>
-                </select>
               </div>
               <div class="stack">
                 <label class="muted" for="filter-sort">Ordenação</label>
@@ -265,6 +269,32 @@
                 </select>
               </div>
             </div>
+            <div class="filters-advanced" hidden>
+              <div class="row">
+                <div class="stack">
+                  <label class="muted" for="filter-min-sats">Min. sats</label>
+                  <input type="number" id="filter-min-sats" min="0" step="1" placeholder="ex: 100000" />
+                </div>
+                <div class="stack">
+                  <label class="muted" for="filter-type">Tipo</label>
+                  <select id="filter-type">
+                    <option value="all" selected>Todos</option>
+                    <option value="buy">Compra</option>
+                    <option value="sell">Venda</option>
+                  </select>
+                </div>
+              </div>
+              <div class="row">
+                <div class="stack">
+                  <label class="muted" for="filter-min-price">Preço mínimo</label>
+                  <input type="number" id="filter-min-price" min="0" step="0.01" placeholder="ex: 25000" />
+                </div>
+                <div class="stack">
+                  <label class="muted" for="filter-max-price">Preço máximo</label>
+                  <input type="number" id="filter-max-price" min="0" step="0.01" placeholder="ex: 80000" />
+                </div>
+              </div>
+            </div>
             <div style="display:flex; gap:8px;">
               <button type="button" id="filters-reset" class="ghost" style="flex:1;">Limpar filtros</button>
             </div>
@@ -276,7 +306,8 @@
           </div>
         </div>
 
-        <form id="tx-form">
+        <form id="tx-form" class="section-panel" data-section-panel="entry">
+          <div id="entrySection" class="section-anchor" aria-hidden="true"></div>
           <div class="card stack glass-card">
             <div style="display:flex; align-items:center; justify-content:space-between;">
               <div>
@@ -285,80 +316,89 @@
               </div>
               <button id="fetchPriceBtn" type="button" class="ghost" title="Pegar preço do dia pelo CoinGecko">Buscar preço do dia</button>
             </div>
+            <div class="stack">
+              <label class="muted" for="tx-txid">TXID</label>
+              <input id="tx-txid" name="txid" type="text" placeholder="hash da transação" autocomplete="off" />
+            </div>
             <div class="row">
               <div class="stack"><label class="muted">Data</label><input id="tx-date" name="date" type="date" required /></div>
-              <div class="stack"><label class="muted">Sats</label><input id="tx-sats" name="sats" type="number" step="1" placeholder="ex: 10000" required /></div>
-            </div>
-            <div class="row">
               <div class="stack"><label class="muted">Preço BTC</label><input id="tx-price" name="price" type="number" step="0.01" placeholder="ex: 35000" required /></div>
-              <div class="stack"><label class="muted">Valor (€)</label><input id="tx-fiat" name="fiat" type="number" step="0.01" placeholder="ex: 500" required /></div>
             </div>
             <div class="row">
-              <div class="stack"><label class="muted">Fee (€)</label><input id="tx-fee" name="fee" type="number" step="0.01" placeholder="ex: 1.50" /></div>
-              <div class="stack"><label class="muted">Exchange</label><input id="tx-exchange" name="exchange" type="text" placeholder="ex: Kraken" /></div>
+              <div class="stack"><label class="muted">Sats</label><input id="tx-sats" name="sats" type="number" step="1" placeholder="ex: 10000" required /></div>
+              <div class="stack"><label class="muted">Valor do aporte</label><input id="tx-fiat" name="fiat" type="number" step="0.01" placeholder="ex: 500" required /></div>
             </div>
-            <div class="row">
-              <div class="stack"><label class="muted">Tipo</label>
-                <select id="tx-type" name="type">
-                  <option value="buy" selected>Compra</option>
-                  <option value="sell">Venda</option>
-                </select>
+            <div class="tx-form-extra-fields" hidden>
+              <div class="row">
+                <div class="stack"><label class="muted">Fee (€)</label><input id="tx-fee" name="fee" type="number" step="0.01" placeholder="ex: 1.50" /></div>
+                <div class="stack"><label class="muted">Exchange</label><input id="tx-exchange" name="exchange" type="text" placeholder="ex: Kraken" /></div>
               </div>
-              <div class="stack"><label class="muted">Nota</label><input id="tx-note" name="note" type="text" placeholder="opcional" /></div>
-            </div>
-            <div class="row">
-              <div class="stack">
-                <label class="muted" for="tx-strategy">Estratégia (texto livre)</label>
-                <input id="tx-strategy" name="strategy" type="text" placeholder="ex.: dca" list="txStrategyOptions" />
-                <datalist id="txStrategyOptions"></datalist>
+              <div class="row">
+                <div class="stack"><label class="muted">Tipo</label>
+                  <select id="tx-type" name="type">
+                    <option value="buy" selected>Compra</option>
+                    <option value="sell">Venda</option>
+                  </select>
+                </div>
+                <div class="stack"><label class="muted">Nota</label><input id="tx-note" name="note" type="text" placeholder="opcional" /></div>
               </div>
-              <div class="stack">
-                <label class="muted" for="tx-tags">Tags (vírgula)</label>
-                <input id="tx-tags" name="tags" type="text" placeholder="cold,long-term" />
-                <div id="txTagSuggestions" class="goal-chip-list"></div>
+              <div class="row">
+                <div class="stack">
+                  <label class="muted" for="tx-strategy">Estratégia (texto livre)</label>
+                  <input id="tx-strategy" name="strategy" type="text" placeholder="ex.: dca" list="txStrategyOptions" />
+                  <datalist id="txStrategyOptions"></datalist>
+                </div>
+                <div class="stack">
+                  <label class="muted" for="tx-tags">Tags (vírgula)</label>
+                  <input id="tx-tags" name="tags" type="text" placeholder="cold,long-term" />
+                  <div id="txTagSuggestions" class="goal-chip-list"></div>
+                </div>
               </div>
-            </div>
-            <div class="row">
-              <div class="stack"><label class="muted" for="tx-txid">TXID (opcional)</label><input id="tx-txid" name="txid" type="text" placeholder="hash da transação" autocomplete="off" /></div>
-              <div class="stack"><label class="muted" for="tx-wallet">Endereço / Carteira</label><input id="tx-wallet" name="wallet" type="text" placeholder="bc1..." autocomplete="off" /></div>
+              <div class="row">
+                <div class="stack"><label class="muted" for="tx-wallet">Endereço / Carteira</label><input id="tx-wallet" name="wallet" type="text" placeholder="bc1..." autocomplete="off" /></div>
+              </div>
             </div>
             <div class="tx-actions-row">
               <div class="tx-actions-buttons">
                 <button id="tx-add" type="submit" class="primary">Adicionar</button>
                 <button id="tx-cancel-edit" type="button" class="ghost" style="display:none;">Cancelar</button>
+                <button id="tx-delete-edit" type="button" class="danger" style="display:none;">Apagar</button>
               </div>
               <div id="tx-error" class="muted" role="status" aria-live="polite"></div>
             </div>
           </div>
         </form>
 
-        <div class="card">
+        <div class="card chart-main-card section-panel" id="chartSection" data-section-panel="chart">
           <div style="font-weight:800;">Gráfico BTC e marcadores de aportes</div>
-          <div id="chartContainer" style="height:320px; margin-top:8px;"><canvas id="btcChart"></canvas></div>
+          <div id="chartContainer" style="height:320px; margin-top:8px;">
+            <canvas id="btcChart"></canvas>
+            <div id="chartEmptyState" class="chart-empty-state" hidden></div>
+          </div>
           <div id="chartLegend" class="note" style="margin-top:6px; font-size:12px;">—</div>
         </div>
 
-        <div id="monthsContainer" class="card" style="margin-top:8px;">
+        <div id="monthsContainer" class="card section-panel" data-section-panel="entry" style="margin-top:8px;">
           <div style="font-weight:800;">Aportes</div>
           <div id="monthsGrid" style="display:grid; gap:8px; margin-top:8px;"></div>
         </div>
       </aside>
 
       <main style="display:grid; gap:12px; align-content:start;">
-        <!-- Exportar / Importar moved to footer -->
-
-        <div id="transactionsCard" class="card">
+        <div id="transactionsCard" class="card section-panel" data-section-panel="transactions">
+          <div id="transactionsSection" class="section-anchor" aria-hidden="true"></div>
           <div style="display:flex; align-items:center; justify-content:space-between;">
             <div style="font-weight:800;">Transações</div>
             <div id="transactionsMeta" class="muted" style="font-size:12px;">—</div>
           </div>
           <table style="width:100%;border-collapse:collapse;margin-top:8px;">
-            <thead><tr><th>Data</th><th>Sats</th><th>Preço</th><th>Status</th><th>Classificação</th><th>Nota</th><th></th></tr></thead>
+            <thead><tr><th>Data</th><th>Sats</th><th>Preço</th><th>P&L</th><th>Status</th><th>Classificação</th><th>Nota</th><th></th></tr></thead>
             <tbody id="tx-body"></tbody>
           </table>
         </div>
 
-        <div id="auditCard" class="card">
+        <div id="auditCard" class="card section-panel" data-section-panel="audit">
+          <div id="auditSection" class="section-anchor" aria-hidden="true"></div>
           <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px;">
             <div>
               <div style="font-weight:800;">Modo auditoria / Proof Ledger</div>
@@ -404,7 +444,8 @@
           </div>
         </div>
 
-        <div id="goalsCard" class="card goals-card">
+        <div id="goalsCard" class="card goals-card section-panel" data-section-panel="goals">
+          <div id="goalsSection" class="section-anchor" aria-hidden="true"></div>
           <div class="goals-head">
             <div>
               <div style="font-weight:800;">Metas em sats</div>
@@ -448,7 +489,49 @@
         </div>
       </main>
     </div>
+    <script>
+      (function () {
+        const menu = document.getElementById('sectionMenu');
+        const chartSection = document.getElementById('chartSection');
+        if (!menu || !chartSection) return;
+        const buttons = Array.from(menu.querySelectorAll('[data-section]'));
+        const panels = Array.from(document.querySelectorAll('[data-section-panel]'));
 
+        const targets = {
+          chart: chartSection,
+          summary: document.getElementById('summarySection'),
+          entry: document.getElementById('entrySection'),
+          transactions: document.getElementById('transactionsSection'),
+          audit: document.getElementById('auditSection'),
+          goals: document.getElementById('goalsSection'),
+        };
+
+        function setActiveSection(section) {
+          buttons.forEach((button) => {
+            const active = button.dataset.section === section;
+            button.classList.toggle('active', active);
+            button.setAttribute('aria-pressed', active ? 'true' : 'false');
+          });
+          panels.forEach((panel) => {
+            panel.hidden = panel.dataset.sectionPanel !== section;
+          });
+        }
+
+        setActiveSection('chart');
+
+        menu.addEventListener('click', (event) => {
+          const button = event.target.closest('[data-section]');
+          if (!button) return;
+          const section = button.dataset.section;
+          if (!section) return;
+          setActiveSection(section);
+          const target = targets[section];
+          if (target && typeof target.scrollIntoView === 'function') {
+            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }
+        });
+      })();
+    </script>
     <script type="module" src="./js/app.js"></script>
     <!-- Liquid Glass: defs globais -->
     <footer style="padding:12px 20px; display:flex; justify-content:center; gap:12px; align-items:center;">
@@ -458,14 +541,17 @@
         <input id="file-import" type="file" accept="application/json,.json,.txt" hidden />
       </label>
     </footer>
-    <svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute;overflow:hidden">
-      <defs>
-        <filter id="glass-distortion" x="0%" y="0%" width="100%" height="100%">
-          <feTurbulence type="fractalNoise" baseFrequency="0.008 0.008" numOctaves="2" seed="92" result="noise"/>
-          <feGaussianBlur in="noise" stdDeviation="2" result="blurred"/>
-          <feDisplacementMap in="SourceGraphic" in2="blurred" scale="77" xChannelSelector="R" yChannelSelector="G"/>
-        </filter>
-      </defs>
-    </svg>
+
+  <div id="pinModal" role="dialog" aria-modal="true" aria-label="Detalhes do aporte">
+    <div class="pin-modal-box">
+      <h3 id="pinModalTitle">Aporte</h3>
+      <div class="pin-modal-row"><span>Data</span><span class="pin-modal-val" id="pinModalDate">—</span></div>
+      <div class="pin-modal-row"><span>Sats</span><span class="pin-modal-val" id="pinModalSats">—</span></div>
+      <div class="pin-modal-row"><span>Custo</span><span class="pin-modal-val" id="pinModalCost">—</span></div>
+      <div class="pin-modal-row"><span>Hoje</span><span class="pin-modal-val" id="pinModalCurrent">—</span></div>
+      <div class="pin-modal-row"><span>P&amp;L</span><span class="pin-modal-val pin-modal-pnl" id="pinModalPnl">—</span></div>
+      <button class="pin-modal-close" id="pinModalClose">Fechar</button>
+    </div>
+  </div>
   </body>
 </html>
