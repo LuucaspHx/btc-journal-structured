@@ -1,5 +1,8 @@
 # P&L em Tempo Real + Alfinetes no Gráfico — Plano de Implementação
 
+> **STATUS: CONCLUÍDO** — HEAD `ff37d85`. Todos os módulos implementados e testados (146/146).
+> `js/ui/chart/render.js` foi criado e depois removido conscientemente em `ff37d85` após o dataset de pins ser absorvido por `app.js` (sem imports externos). Decisão arquitetural — não gap de plano.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Adicionar P&L dinâmico por aporte na tabela e alfinetes clicáveis no gráfico de preço histórico, com preço BTC atualizado a cada 30s.
