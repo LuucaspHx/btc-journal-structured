@@ -17,7 +17,9 @@ Permitir que Lucas defina um preço-alvo em USD e veja-o como linha horizontal p
 - **Moeda:** sempre USD. Se o gráfico estiver noutra moeda (`state.vs !== 'usd'`), o input fica desabilitado com microcopy. A conversão de unidades fica fora de scope deste lote.
 - **Persistência:** nenhuma neste lote. `state.targetPriceUsd` vive apenas em memória — limpa ao recarregar a página.
 - **Plugin:** `chartjs-plugin-annotation` já registado em `app.js`. Usar directamente — sem novo plugin, sem dataset fictício.
-- **Update:** live update via `_chart.options.plugins.annotation` + `_chart.update('none')`. Sem rebuild do chart.
+- **Update — dois paths complementares:**
+  1. **Path canónico (re-renders):** `buildChartConfig()` lê `state.targetPriceUsd` e inclui a annotation `targetPrice` na config que constrói. Qualquer re-render (filtros, ano, moeda, refresh de série) reconstrói o chart com o target já incluído.
+  2. **Path live (keystroke):** após actualizar `state.targetPriceUsd`, mutação directa de `_chart.options.plugins.annotation.annotations` + `_chart.update('none')` para resposta imediata sem rebuild completo. Este path só serve para a UX do input — o chart re-renderizado pelo path canónico já inclui o estado correcto.
 
 ---
 
@@ -101,6 +103,8 @@ function bindTargetPrice() {
     input.disabled = !isUsd;
     if (hint) hint.hidden = isUsd;
     if (!isUsd) {
+      // Limpa campo E estado ao sair de USD — sem ambiguidade ao voltar
+      input.value = '';
       state.targetPriceUsd = null;
       updateTargetAnnotation();
     }
@@ -118,6 +122,8 @@ function bindTargetPrice() {
 ```
 
 `syncCurrencyGuard` é invocado a partir do handler existente de mudança de `vsCurrency`.
+
+**Semântica ao mudar moeda:** ao sair de USD, campo e estado são limpos. Ao voltar para USD, o campo está vazio — o utilizador reintroduz o target se quiser. Sem reidratação implícita de valor anterior.
 
 ### 5. Annotation update (`app.js`)
 
