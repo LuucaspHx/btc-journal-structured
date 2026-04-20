@@ -271,7 +271,7 @@ header.site-header nav{
   .goals-detail-meta { font-size:12px; }
   .goals-detail-stats { display:grid; grid-template-columns: repeat(auto-fit,minmax(150px,1fr)); gap:10px; }
   .goal-detail-stat { border:1px solid rgba(0,0,0,0.06); border-radius:12px; padding:10px; background: var(--color-bg-surface-2); display:grid; gap:4px; }
-  .goal-detail-stat span { font-size:11px; color: var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+  .goal-detail-stat span { font-size:11px; color: var(--muted); text-transform:uppercase; letter-spacing: var(--tracking-caps); }
   .goal-detail-stat strong { font-size:16px; color: var(--fg-100); }
   .goals-detail-table-wrapper { border:1px solid rgba(0,0,0,0.05); border-radius:12px; overflow:auto; max-height:280px; }
   .goals-detail-table { width:100%; border-collapse:collapse; font-size:13px; }
@@ -731,5 +731,68 @@ h1, h2, h3, h4 {
 .audit-filters button:focus-visible,
 .goal-chip-list .goal-chip:focus-visible {
   outline-offset: 2px;
+}
+
+/* ===== /adapt — mobile (≤ 480px) ===== */
+@media (max-width: 480px) {
+
+  /* iOS zoom prevention: inputs/selects < 16px trigger browser auto-zoom on focus */
+  select, input, textarea {
+    font-size: 16px;
+  }
+
+  /* Section nav: horizontal scroll strip — wrapping creates ~100px of sticky chrome */
+  .section-menu {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    gap: 6px;
+    padding: 8px 12px;
+  }
+  .section-menu::-webkit-scrollbar { display: none; }
+  .section-menu-btn {
+    flex-shrink: 0;
+    min-height: 44px;
+    padding: 10px 14px;
+  }
+
+  /* KPI bar: 2 columns — 3 cols too cramped at 375px (6 KPIs = 2 rows of 3, ~96px each) */
+  .kpiBar {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  /* Form rows: single column on mobile */
+  .row, .row3 {
+    grid-template-columns: 1fr;
+  }
+
+  /* Data grids: 2 → 1 column on phones */
+  .grid12 {
+    grid-template-columns: 1fr;
+  }
+
+  /* Toasts: full-width flush to edges — right-only anchor clips on narrow screens */
+  .message-container {
+    left: 12px;
+    right: 12px;
+    max-width: none;
+  }
+
+  /* Chart: slightly shorter on phone to preserve screen for data */
+  .chart-body {
+    min-height: 200px;
+  }
+
+  /* Header: tighter horizontal padding on narrow screens */
+  .site-header {
+    padding: 10px 12px;
+  }
+
+  /* Audit filter pills: larger touch targets */
+  .audit-filters button {
+    min-height: 36px;
+    padding: 8px 12px;
+  }
 }
 
