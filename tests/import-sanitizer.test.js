@@ -1,4 +1,11 @@
-import { normalizeEntry, sanitizeImportPayload, asNumber, asDateString, satsFrom } from '../js/import-sanitizer.js';
+import {
+  MAX_IMPORT_ENTRIES,
+  normalizeEntry,
+  sanitizeImportPayload,
+  asNumber,
+  asDateString,
+  satsFrom,
+} from '../js/import-sanitizer.js';
 
 describe('import-sanitizer', () => {
   test('normalizeEntry - happy path', () => {
@@ -91,5 +98,13 @@ describe('import-sanitizer', () => {
     expect(r3.entries.length).toBe(1);
     expect(r3.vs).toBe('usd');
     expect(r3.sources[0]).toEqual(payloadArray[0]);
+  });
+
+  test('sanitizeImportPayload rejeita payload acima do limite global', () => {
+    const payload = new Array(MAX_IMPORT_ENTRIES + 1).fill(null);
+    const result = sanitizeImportPayload(payload);
+
+    expect(result.ok).toBe(false);
+    expect(result.reason).toContain('10.000 entradas');
   });
 });

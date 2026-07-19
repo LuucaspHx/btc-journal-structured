@@ -40,7 +40,11 @@ import {
 } from './ui/audit/helpers.js';
 import { renderAuditPanel } from './ui/audit/render.js';
 import { bindAuditControls } from './ui/audit/bind.js';
-import { csvEscape, prepareImportPayloadFromText } from './ui/import-export/helpers.js';
+import {
+  csvEscape,
+  getImportFileSizeError,
+  prepareImportPayloadFromText,
+} from './ui/import-export/helpers.js';
 import { bindImportExport } from './ui/import-export/bind.js';
 import {
   closeExportModal as hideExportModal,
@@ -2250,6 +2254,11 @@ function applyPendingImport() {
 }
 
 async function handleImportFile(file) {
+  const sizeError = getImportFileSizeError(file);
+  if (sizeError) {
+    showMessage(sizeError, 'error');
+    return;
+  }
   const hideLoading = showLoadingOverlay('A importar dados...');
   try {
     const text = await file.text();

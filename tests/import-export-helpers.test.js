@@ -1,4 +1,10 @@
-import { csvEscape, normalizeImportShape, prepareImportPayloadFromText } from '../js/ui/import-export/helpers.js';
+import {
+  MAX_IMPORT_FILE_BYTES,
+  csvEscape,
+  getImportFileSizeError,
+  normalizeImportShape,
+  prepareImportPayloadFromText,
+} from '../js/ui/import-export/helpers.js';
 
 describe('csvEscape', () => {
   test('valor simples passa sem alteração', () => {
@@ -63,5 +69,17 @@ describe('normalizeImportShape', () => {
     const goals = { list: [] };
     const result = normalizeImportShape({ entries: [], goals });
     expect(result.goals).toBe(goals);
+  });
+});
+
+describe('getImportFileSizeError', () => {
+  test('aceita arquivo no limite', () => {
+    expect(getImportFileSizeError({ size: MAX_IMPORT_FILE_BYTES })).toBeNull();
+  });
+
+  test('rejeita arquivo acima de 5 MB', () => {
+    expect(getImportFileSizeError({ size: MAX_IMPORT_FILE_BYTES + 1 })).toBe(
+      'Arquivo excede o limite de 5 MB.'
+    );
   });
 });
