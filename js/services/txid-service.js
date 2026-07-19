@@ -3,7 +3,7 @@ const NETWORK_PREFIX = {
   mainnet: '',
   bitcoin: '',
   testnet: '/testnet',
-  signet: '/signet'
+  signet: '/signet',
 };
 const SATS_EPSILON = 100; // tolerância ao comparar valores
 
@@ -13,7 +13,7 @@ const TXID_STATUS = {
   CONFIRMED: 'confirmed',
   INVALID: 'invalid',
   MISMATCH: 'mismatch',
-  INCONCLUSIVE: 'inconclusive'
+  INCONCLUSIVE: 'inconclusive',
 };
 
 function ensureFetcher(fetcher) {
@@ -23,7 +23,9 @@ function ensureFetcher(fetcher) {
 }
 
 function normalizeTxid(txid = '') {
-  const trimmed = String(txid || '').trim().toLowerCase();
+  const trimmed = String(txid || '')
+    .trim()
+    .toLowerCase();
   if (!trimmed || !/^[0-9a-f]{8,100}$/i.test(trimmed)) return null;
   return trimmed;
 }
@@ -117,9 +119,10 @@ function buildValidationSummary(entry, txData, options = {}) {
   const totalOutputs = sumOutputs(txData);
   const toWallet = wallet ? sumOutputsToAddress(txData, wallet) : null;
   const referenceValue = wallet ? toWallet : totalOutputs;
-  const matchesAmount = Number.isFinite(expectedSats) && Number.isFinite(referenceValue)
-    ? Math.abs(expectedSats - referenceValue) <= (options.amountTolerance ?? SATS_EPSILON)
-    : false;
+  const matchesAmount =
+    Number.isFinite(expectedSats) && Number.isFinite(referenceValue)
+      ? Math.abs(expectedSats - referenceValue) <= (options.amountTolerance ?? SATS_EPSILON)
+      : false;
   const hasWalletMatch = wallet ? Number(toWallet) > 0 : false;
   const confirmations = computeConfirmations(txData, options);
   return {
@@ -129,7 +132,7 @@ function buildValidationSummary(entry, txData, options = {}) {
     toWallet,
     matchesAmount,
     hasWalletMatch,
-    confirmations
+    confirmations,
   };
 }
 
@@ -144,7 +147,10 @@ function decideStatus(entry, txData, summary) {
     return { status: TXID_STATUS.PENDING, reason: 'Transação ainda sem confirmações' };
   }
   if (summary.wallet && !summary.hasWalletMatch) {
-    return { status: TXID_STATUS.MISMATCH, reason: 'Nenhuma saída corresponde ao endereço informado' };
+    return {
+      status: TXID_STATUS.MISMATCH,
+      reason: 'Nenhuma saída corresponde ao endereço informado',
+    };
   }
   if (summary.matchesAmount) {
     return { status: TXID_STATUS.CONFIRMED, reason: 'Valor compatível e transação confirmada' };
@@ -152,7 +158,10 @@ function decideStatus(entry, txData, summary) {
   if (Number.isFinite(summary.expectedSats)) {
     return { status: TXID_STATUS.MISMATCH, reason: 'Valor encontrado diverge do aportado' };
   }
-  return { status: TXID_STATUS.INCONCLUSIVE, reason: 'Dados insuficientes para confirmar compatibilidade' };
+  return {
+    status: TXID_STATUS.INCONCLUSIVE,
+    reason: 'Dados insuficientes para confirmar compatibilidade',
+  };
 }
 
 export async function validateTxidEntry(entry = {}, options = {}) {
@@ -160,7 +169,7 @@ export async function validateTxidEntry(entry = {}, options = {}) {
     return {
       status: TXID_STATUS.MANUAL,
       reason: 'TXID não informado',
-      txid: entry?.txid || null
+      txid: entry?.txid || null,
     };
   }
   const networkHint = entry.network || inferNetworkFromEntry(entry);
@@ -171,7 +180,7 @@ export async function validateTxidEntry(entry = {}, options = {}) {
         status: TXID_STATUS.INVALID,
         reason: 'TXID não encontrado no explorer',
         txid: entry.txid,
-        explorerUrl: buildExplorerUrl(entry.txid, { ...options, network: networkHint })
+        explorerUrl: buildExplorerUrl(entry.txid, { ...options, network: networkHint }),
       };
     }
     const txData = result.data;
@@ -187,14 +196,18 @@ export async function validateTxidEntry(entry = {}, options = {}) {
       wallet: summary.wallet,
       network: resolveNetwork(networkHint),
       fetchedAt: new Date().toISOString(),
-      raw: options.includeRaw ? txData : undefined
+      confirmedAt:
+        txData?.status?.confirmed && txData?.status?.block_time
+          ? new Date(txData.status.block_time * 1000).toISOString().slice(0, 10)
+          : null,
+      raw: options.includeRaw ? txData : undefined,
     };
   } catch (err) {
     return {
       status: TXID_STATUS.INCONCLUSIVE,
       reason: err?.message || 'Falha ao consultar explorer',
       txid: entry.txid,
-      explorerUrl: buildExplorerUrl(entry.txid, { ...options, network: networkHint })
+      explorerUrl: buildExplorerUrl(entry.txid, { ...options, network: networkHint }),
     };
   }
 }

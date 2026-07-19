@@ -1,1 +1,5 @@
+# 1. Design system contracts
+bash .scripts/lint-tokens.sh
+
+# 2. Lint + format
 npx lint-staged

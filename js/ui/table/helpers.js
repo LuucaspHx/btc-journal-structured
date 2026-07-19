@@ -6,7 +6,7 @@ const TXID_STATUS_LABELS = {
   confirmed: 'Confirmado',
   invalid: 'Inválido',
   mismatch: 'Incompatível',
-  inconclusive: 'Inconclusivo'
+  inconclusive: 'Inconclusivo',
 };
 
 export const shortTxid = (txid = '') => {
@@ -35,7 +35,7 @@ export function describeSortLabel(sortValue = 'date-desc') {
     'price-desc': 'Ordem: preço ↓',
     'price-asc': 'Ordem: preço ↑',
     'fiat-desc': 'Ordem: valor (€) ↓',
-    'fiat-asc': 'Ordem: valor (€) ↑'
+    'fiat-asc': 'Ordem: valor (€) ↑',
   };
   return labels[sortValue] || 'Ordem: personalizada';
 }
@@ -60,3 +60,23 @@ export const getTxFiat = (tx = {}) => {
 export const getTxDate = (tx = {}) => tx.date ?? (tx.createdAt ? tx.createdAt.slice(0, 10) : '');
 
 export const getTxNote = (tx = {}) => tx.note ?? '';
+
+export function formatCurrentValue(value, currency = 'USD') {
+  if (!Number.isFinite(value)) return '—';
+  return new Intl.NumberFormat('pt-BR', {
+    style: 'currency',
+    currency: currency.toUpperCase(),
+    minimumFractionDigits: 2,
+  }).format(value);
+}
+
+export function formatPnL({ pnlValue, pnlPct, isProfit } = {}, currency = 'USD') {
+  if (!Number.isFinite(pnlValue))
+    return { sign: '—', valueText: '—', pctText: '—', isProfit: false };
+  const sign = isProfit ? '▲' : '▼';
+  const absValue = Math.abs(pnlValue);
+  const prefix = isProfit ? '+' : '-';
+  const valueText = formatCurrentValue(absValue, currency);
+  const pctText = pnlPct != null ? `${prefix}${Math.abs(pnlPct).toFixed(2)}%` : 'n/a';
+  return { sign, valueText, pctText, isProfit };
+}

@@ -1,12 +1,23 @@
-
 // Minimal app module: load/save transactions, render table/stats, import/export com sanitizer
 import { SCHEMA_VERSION, createDefaultEntry } from './core/schema.js';
 import { normalizeEntry, sanitizeImportPayload, validateTransaction } from './core/validators.js';
 import { satsFrom, pmMedio, satsToBtc } from './core/calculations.js';
-import { loadState as storageLoadState, saveState as storageSaveState, backupLocalData } from './storage/local-db.js';
+import {
+  loadState as storageLoadState,
+  saveState as storageSaveState,
+  backupLocalData,
+} from './storage/local-db.js';
 import { detectOldKey, migrateV1ToV3 } from './storage/migrations.js';
-import { getPresetGoals, normalizeGoal as normalizeGoalConfig, computeGoalProgress } from './core/goals.js';
-import { createGoalsController, createEmptyGoalsState, hydrateGoalsState } from './features/goals-controller.js';
+import {
+  getPresetGoals,
+  normalizeGoal as normalizeGoalConfig,
+  computeGoalProgress,
+} from './core/goals.js';
+import {
+  createGoalsController,
+  createEmptyGoalsState,
+  hydrateGoalsState,
+} from './features/goals-controller.js';
 import { validateTxidEntry, buildExplorerUrl, TXID_STATUS } from './services/txid-service.js';
 import {
   shortTxid,
@@ -17,7 +28,7 @@ import {
   getTxSats,
   getTxFiat,
   getTxDate,
-  getTxNote
+  getTxNote,
 } from './ui/table/helpers.js';
 import { updateFiltersMeta, renderTable, renderStats } from './ui/table/render.js';
 import { bindFilters, bindTableActions, bindYearSelect } from './ui/table/bind.js';
@@ -25,14 +36,11 @@ import {
   AUDIT_FILTERS,
   AUDIT_TABLE_DEFAULT_LIMIT,
   AUDIT_TABLE_MAX,
-  AUDIT_TABLE_STEP
+  AUDIT_TABLE_STEP,
 } from './ui/audit/helpers.js';
 import { renderAuditPanel } from './ui/audit/render.js';
 import { bindAuditControls } from './ui/audit/bind.js';
-import {
-  csvEscape,
-  prepareImportPayloadFromText
-} from './ui/import-export/helpers.js';
+import { csvEscape, prepareImportPayloadFromText } from './ui/import-export/helpers.js';
 import { bindImportExport } from './ui/import-export/bind.js';
 import {
   closeExportModal as hideExportModal,
@@ -40,8 +48,11 @@ import {
   openExportModal as showExportModal,
   openImportModal as showImportModal,
   renderExportPreview,
-  renderImportPreview
+  renderImportPreview,
 } from './ui/import-export/render.js';
+import { createPriceService } from './services/price-service.js';
+import { bindChartPins } from './ui/chart/bind.js';
+import { chartTokens, readToken } from './ui/chart/tokens.js';
 
 const LS_KEY = 'btc_journal_state_v3';
 const CHART_MODE_STORAGE_KEY = 'btc_journal_chart_mode';
@@ -56,10 +67,14 @@ const goalsController = createGoalsController();
 goalsController.setGoalsState(state.goals);
 goalsController.subscribe((snapshot) => renderGoalsPanel(snapshot));
 const SORT_PRESETS = new Set([
-  'date-desc', 'date-asc',
-  'sats-desc', 'sats-asc',
-  'price-desc', 'price-asc',
-  'fiat-desc', 'fiat-asc'
+  'date-desc',
+  'date-asc',
+  'sats-desc',
+  'sats-asc',
+  'price-desc',
+  'price-asc',
+  'fiat-desc',
+  'fiat-asc',
 ]);
 
 const filterState = {
@@ -70,7 +85,7 @@ const filterState = {
   maxPrice: null,
   type: 'all',
   search: '',
-  sort: 'date-desc'
+  sort: 'date-desc',
 };
 const auditFilterState = { status: 'all' };
 const auditViewState = { limit: AUDIT_TABLE_DEFAULT_LIMIT };
@@ -81,19 +96,301 @@ let priceSeriesMeta = null;
 let ohlcSeriesMeta = null;
 let lastFailedPriceMeta = null;
 let lastFailedOhlcMeta = null;
+let lastPriceFetchIssue = null;
 const TXID_STATUS_TONES = {
   manual: 'muted',
   pending: 'info',
   confirmed: 'success',
   invalid: 'error',
   mismatch: 'warn',
-  inconclusive: 'warn'
+  inconclusive: 'warn',
 };
 const AUTO_VALIDATE_STATUSES = new Set([
   TXID_STATUS.MANUAL,
   TXID_STATUS.PENDING,
-  TXID_STATUS.INCONCLUSIVE
+  TXID_STATUS.INCONCLUSIVE,
 ]);
+
+function createRemoteFetchError(source, kind, message, extra = {}) {
+  const err = new Error(message);
+  err.source = source;
+  err.kind = kind;
+  Object.assign(err, extra);
+  return err;
+}
+
+function normalizeRemoteFetchError(source, error) {
+  if (error?.kind) return error;
+  const status = Number(error?.status);
+  const message = String(error?.message || '');
+  if (status === 429 || /\b429\b/.test(message)) {
+    return createRemoteFetchError(source, 'rate_limit', `${source} rate limited`, { status: 429 });
+  }
+  if (
+    error instanceof TypeError ||
+    /Failed to fetch|Load failed|NetworkError|Network request failed|fetch/i.test(message)
+  ) {
+    return createRemoteFetchError(source, 'network_or_cors', `${source} blocked by network/CORS`, {
+      cause: error,
+    });
+  }
+  if (Number.isFinite(status) && status >= 400) {
+    return createRemoteFetchError(source, 'http_error', `${source} HTTP ${status}`, { status });
+  }
+  return createRemoteFetchError(source, 'unknown', `${source} failed`, { cause: error });
+}
+
+async function fetchJsonOrThrow(url, { source } = {}) {
+  let res;
+  try {
+    res = await fetch(url);
+  } catch (error) {
+    throw normalizeRemoteFetchError(source || 'remote', error);
+  }
+  if (!res.ok) {
+    throw normalizeRemoteFetchError(
+      source || 'remote',
+      createRemoteFetchError(
+        source || 'remote',
+        'http_error',
+        `${source || 'remote'} HTTP ${res.status}`,
+        {
+          status: res.status,
+        }
+      )
+    );
+  }
+  try {
+    return await res.json();
+  } catch (error) {
+    throw createRemoteFetchError(
+      source || 'remote',
+      'invalid_json',
+      `${source || 'remote'} returned invalid JSON`,
+      { cause: error }
+    );
+  }
+}
+
+function normalizeHistoryQuery(rangeOrDays = 90) {
+  const usingRange =
+    rangeOrDays &&
+    typeof rangeOrDays === 'object' &&
+    Number.isFinite(rangeOrDays.min) &&
+    Number.isFinite(rangeOrDays.max);
+  if (usingRange) {
+    const range = ensureChartRange(rangeOrDays);
+    const limit = Math.max(1, Math.min(2000, Math.ceil((range.max - range.min) / DAY_MS) + 2));
+    return { usingRange: true, range, limit, toTs: Math.floor(range.max / 1000) };
+  }
+  const days = Math.max(1, Math.min(2000, Math.floor(Number(rangeOrDays) || 90)));
+  return { usingRange: false, range: null, limit: days, toTs: null };
+}
+
+async function fetchCurrentPriceFromCoinGecko(vs) {
+  const json = await fetchJsonOrThrow(
+    `https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=${vs}`,
+    { source: 'CoinGecko current price' }
+  );
+  const price = Number(json?.bitcoin?.[vs]);
+  if (!Number.isFinite(price)) {
+    throw createRemoteFetchError(
+      'CoinGecko current price',
+      'invalid_payload',
+      'CoinGecko returned an invalid current price payload'
+    );
+  }
+  return price;
+}
+
+async function fetchCurrentPriceFromCryptoCompare(vs) {
+  const tsym = String(vs || 'USD').toUpperCase();
+  const json = await fetchJsonOrThrow(
+    `https://min-api.cryptocompare.com/data/price?fsym=BTC&tsyms=${tsym}&extraParams=btc_journal_structured`,
+    { source: 'CryptoCompare current price' }
+  );
+  const price = Number(json?.[tsym]);
+  if (!Number.isFinite(price)) {
+    throw createRemoteFetchError(
+      'CryptoCompare current price',
+      'invalid_payload',
+      'CryptoCompare returned an invalid current price payload'
+    );
+  }
+  return price;
+}
+
+async function fetchCurrentPriceValue(vs = 'usd') {
+  const normalizedVs = String(vs || 'usd').toLowerCase();
+  try {
+    return await fetchCurrentPriceFromCoinGecko(normalizedVs);
+  } catch (coinGeckoError) {
+    console.warn(
+      'CoinGecko current price failed, trying CryptoCompare',
+      normalizeRemoteFetchError('CoinGecko current price', coinGeckoError)
+    );
+    try {
+      return await fetchCurrentPriceFromCryptoCompare(normalizedVs);
+    } catch (cryptoCompareError) {
+      if (normalizedVs !== 'usd') {
+        throw normalizeRemoteFetchError('CryptoCompare current price', cryptoCompareError);
+      }
+      console.warn(
+        'CryptoCompare current price failed, trying CoinDesk',
+        normalizeRemoteFetchError('CryptoCompare current price', cryptoCompareError)
+      );
+      const json = await fetchJsonOrThrow('https://api.coindesk.com/v1/bpi/currentprice.json', {
+        source: 'CoinDesk current price',
+      });
+      const price = Number(json?.bpi?.USD?.rate_float);
+      if (!Number.isFinite(price)) {
+        throw createRemoteFetchError(
+          'CoinDesk current price',
+          'invalid_payload',
+          'CoinDesk returned an invalid current price payload'
+        );
+      }
+      return price;
+    }
+  }
+}
+
+async function fetchHistoricalPricesFromCoinGecko(rangeOrDays = 90, vs = 'usd') {
+  const query = normalizeHistoryQuery(rangeOrDays);
+  const endpoint = query.usingRange
+    ? `https://api.coingecko.com/api/v3/coins/bitcoin/market_chart/range?vs_currency=${vs}&from=${Math.floor(query.range.min / 1000)}&to=${Math.floor(query.range.max / 1000)}`
+    : `https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=${vs}&days=${query.limit}`;
+  const json = await fetchJsonOrThrow(endpoint, { source: 'CoinGecko historical prices' });
+  return (json?.prices || [])
+    .map((point) => ({ t: Number(point?.[0]), p: Number(point?.[1]) }))
+    .filter((point) => Number.isFinite(point.t) && Number.isFinite(point.p));
+}
+
+async function fetchHistoricalPricesFromCryptoCompare(rangeOrDays = 90, vs = 'usd') {
+  const query = normalizeHistoryQuery(rangeOrDays);
+  const tsym = String(vs || 'USD').toUpperCase();
+  const params = new window.URLSearchParams({
+    fsym: 'BTC',
+    tsym,
+    limit: String(query.limit),
+    extraParams: 'btc_journal_structured',
+  });
+  if (Number.isFinite(query.toTs)) params.set('toTs', String(query.toTs));
+  const json = await fetchJsonOrThrow(
+    `https://min-api.cryptocompare.com/data/v2/histoday?${params.toString()}`,
+    { source: 'CryptoCompare historical prices' }
+  );
+  const arr = (json?.Data?.Data || [])
+    .map((point) => ({ t: Number(point?.time) * 1000, p: Number(point?.close) }))
+    .filter((point) => Number.isFinite(point.t) && Number.isFinite(point.p) && point.p > 0);
+  if (!query.usingRange) return arr;
+  return arr.filter((point) => point.t >= query.range.min && point.t <= query.range.max);
+}
+
+function resolvePriceFetchIssue(issue, vs = resolvedVsCurrencyLower()) {
+  const rootIssue = issue?.primaryIssue || issue;
+  const currency = String(vs || 'usd').toUpperCase();
+  if (rootIssue?.kind === 'rate_limit') {
+    return {
+      title: 'CoinGecko limitou a consulta histórica (429)',
+      detail: `O browser ficou sem série BTC/${currency}. O app tentou um fallback, mas não conseguiu fechar a série válida.`,
+    };
+  }
+  if (rootIssue?.kind === 'network_or_cors') {
+    return {
+      title: 'O browser bloqueou a consulta de preços',
+      detail: `Falha de rede/CORS ao buscar BTC/${currency}. O gráfico foi abortado sem série inválida.`,
+    };
+  }
+  if (rootIssue?.source === 'CryptoCompare historical prices') {
+    return {
+      title: 'O fallback histórico também falhou',
+      detail: `Nem CoinGecko nem CryptoCompare devolveram uma série BTC/${currency} utilizável para este período.`,
+    };
+  }
+  return {
+    title: 'Sem série histórica válida para o gráfico',
+    detail: `O app não conseguiu carregar BTC/${currency} para o período selecionado.`,
+  };
+}
+
+function setChartEmptyState(title, detail = '') {
+  const container = document.getElementById('chartContainer');
+  const panel = document.getElementById('chartEmptyState');
+  const legend = document.getElementById('chartLegend');
+  if (!container || !panel) return;
+  container.classList.add('is-empty');
+  panel.hidden = false;
+  panel.innerHTML = '';
+  const wrapper = document.createElement('div');
+  const strong = document.createElement('strong');
+  strong.textContent = title;
+  wrapper.appendChild(strong);
+  if (detail) {
+    const detailEl = document.createElement('span');
+    detailEl.textContent = detail;
+    wrapper.appendChild(detailEl);
+  }
+  panel.appendChild(wrapper);
+  if (legend) legend.textContent = detail || title;
+}
+
+function clearChartEmptyState() {
+  const container = document.getElementById('chartContainer');
+  const panel = document.getElementById('chartEmptyState');
+  if (container) container.classList.remove('is-empty');
+  if (panel) {
+    panel.hidden = true;
+    panel.innerHTML = '';
+  }
+}
+
+function destroyChartForCanvas(canvasOrId) {
+  const canvas =
+    typeof canvasOrId === 'string' ? document.getElementById(canvasOrId) : canvasOrId || null;
+  if (!canvas || typeof Chart === 'undefined' || typeof Chart.getChart !== 'function') return;
+  const existing = Chart.getChart(canvas);
+  if (!existing) return;
+  try {
+    existing.destroy();
+  } catch (e) {
+    /* noop */
+  }
+}
+
+function destroyMainChartInstance() {
+  destroyChartForCanvas('btcChart');
+  const globalChart =
+    typeof window !== 'undefined' && window.btcChart && window.btcChart !== _chart
+      ? window.btcChart
+      : null;
+  if (globalChart) {
+    try {
+      globalChart.destroy();
+    } catch (e) {
+      /* noop */
+    }
+  }
+  if (_chart) {
+    try {
+      _chart.destroy();
+    } catch (e) {
+      /* noop */
+    }
+    _chart = null;
+  }
+  try {
+    window.btcChart = null;
+  } catch (e) {
+    /* ignore */
+  }
+}
+
+function createCoinGeckoFetcher() {
+  return async function (vs) {
+    return fetchCurrentPriceValue(vs);
+  };
+}
 
 function inferNetworkFromTx(tx = {}) {
   if (tx.network) return tx.network;
@@ -119,7 +416,11 @@ function getChartMode() {
 
 function setChartMode(mode = 'line') {
   chartModeValue = mode === 'candles' ? 'candles' : 'line';
-  try { localStorage.setItem(CHART_MODE_STORAGE_KEY, chartModeValue); } catch (e) { /* ignore */ }
+  try {
+    localStorage.setItem(CHART_MODE_STORAGE_KEY, chartModeValue);
+  } catch (e) {
+    /* ignore */
+  }
   const select = document.getElementById('chartMode');
   if (select && select.value !== chartModeValue) select.value = chartModeValue;
 }
@@ -133,7 +434,9 @@ function hydrateChartMode() {
       if (select) select.value = chartModeValue;
       return;
     }
-  } catch (e) { /* ignore */ }
+  } catch (e) {
+    /* ignore */
+  }
   setChartMode(chartModeValue);
 }
 
@@ -174,7 +477,11 @@ function syncFiltersFromInputs() {
   filterState.minPrice = Number.isFinite(minPriceVal) && minPriceVal >= 0 ? minPriceVal : null;
   const maxPriceVal = Number(maxPriceEl?.value);
   filterState.maxPrice = Number.isFinite(maxPriceVal) && maxPriceVal >= 0 ? maxPriceVal : null;
-  if (filterState.minPrice != null && filterState.maxPrice != null && filterState.maxPrice < filterState.minPrice) {
+  if (
+    filterState.minPrice != null &&
+    filterState.maxPrice != null &&
+    filterState.maxPrice < filterState.minPrice
+  ) {
     const temp = filterState.minPrice;
     filterState.minPrice = filterState.maxPrice;
     filterState.maxPrice = temp;
@@ -198,8 +505,10 @@ function applyFiltersToList(list = []) {
     const sats = getTxSats(tx);
     if (filterState.minSats != null && sats < filterState.minSats) return false;
     const price = getTxPrice(tx);
-    if (filterState.minPrice != null && (!Number.isFinite(price) || price < filterState.minPrice)) return false;
-    if (filterState.maxPrice != null && (!Number.isFinite(price) || price > filterState.maxPrice)) return false;
+    if (filterState.minPrice != null && (!Number.isFinite(price) || price < filterState.minPrice))
+      return false;
+    if (filterState.maxPrice != null && (!Number.isFinite(price) || price > filterState.maxPrice))
+      return false;
     if (filterState.type && filterState.type !== 'all') {
       const txType = typeof tx.type === 'string' ? tx.type.toLowerCase() : 'buy';
       if (txType !== filterState.type) return false;
@@ -215,8 +524,10 @@ function applyFiltersToList(list = []) {
         tx.type,
         getTxDate(tx),
         sats ? String(sats) : '',
-        getTxPrice(tx) ? String(getTxPrice(tx)) : ''
-      ].filter(Boolean).map(str => String(str).toLowerCase());
+        getTxPrice(tx) ? String(getTxPrice(tx)) : '',
+      ]
+        .filter(Boolean)
+        .map((str) => String(str).toLowerCase());
       const haystack = haystackParts.join(' ');
       if (!haystack.includes(filterState.search)) return false;
     }
@@ -252,7 +563,7 @@ function sortTxs(list = []) {
     fiat: (tx) => {
       const value = getTxFiat(tx);
       return Number.isFinite(value) ? value : null;
-    }
+    },
   };
   const getter = getters[key] || getters.date;
   return [...list].sort((a, b) => {
@@ -277,7 +588,7 @@ function shouldChartUseFilters() {
 }
 
 function getTxsForChart(visibleTxs = getVisibleTxs()) {
-  return shouldChartUseFilters() ? visibleTxs : (state.txs || []);
+  return shouldChartUseFilters() ? visibleTxs : state.txs || [];
 }
 
 function resolvedVsCurrencyLower() {
@@ -289,7 +600,7 @@ function resolvedVsCurrencyLower() {
 function getChartYearRange() {
   const yearSel = document.getElementById('yearSelect');
   const now = new Date();
-  const year = (yearSel && yearSel.value) ? parseInt(yearSel.value, 10) : now.getFullYear();
+  const year = yearSel && yearSel.value ? parseInt(yearSel.value, 10) : now.getFullYear();
   const min = new Date(year, 0, 1).getTime();
   const max = new Date(year, 11, 31, 23, 59, 59, 999).getTime();
   return { min, max };
@@ -349,7 +660,12 @@ function shouldRefreshOhlc(range, vs) {
 
 function schedulePriceSeriesFetch(range, vs, callback) {
   if (_fetchingPrices) return;
-  if (_pricesFetchFailed && lastFailedPriceMeta && lastFailedPriceMeta.vs === vs && rangesRoughlyMatch(lastFailedPriceMeta.range, range)) {
+  if (
+    _pricesFetchFailed &&
+    lastFailedPriceMeta &&
+    lastFailedPriceMeta.vs === vs &&
+    rangesRoughlyMatch(lastFailedPriceMeta.range, range)
+  ) {
     return;
   }
   _fetchingPrices = true;
@@ -358,12 +674,15 @@ function schedulePriceSeriesFetch(range, vs, callback) {
       _fetchingPrices = false;
       _pricesFetchFailed = false;
       lastFailedPriceMeta = null;
+      lastPriceFetchIssue = null;
       if (typeof callback === 'function') callback();
     })
-    .catch(() => {
+    .catch((error) => {
       _fetchingPrices = false;
       _pricesFetchFailed = true;
       lastFailedPriceMeta = { range: cloneRange(range), vs };
+      lastPriceFetchIssue = error;
+      if (typeof callback === 'function') callback();
     });
 }
 
@@ -436,6 +755,8 @@ function updateFormModeUI(isEditing) {
   if (submitBtn) submitBtn.textContent = isEditing ? 'Guardar alterações' : 'Adicionar';
   const cancelBtn = document.getElementById('tx-cancel-edit');
   if (cancelBtn) cancelBtn.style.display = isEditing ? 'inline-flex' : 'none';
+  const deleteBtn = document.getElementById('tx-delete-edit');
+  if (deleteBtn) deleteBtn.style.display = isEditing ? 'inline-flex' : 'none';
 }
 
 function populateFormWithEntry(entry = null) {
@@ -464,7 +785,8 @@ function populateFormWithEntry(entry = null) {
   setValue('tx-tags', Array.isArray(entry.tags) && entry.tags.length ? entry.tags.join(', ') : '');
   const typeEl = document.getElementById('tx-type');
   if (typeEl) {
-    const type = typeof entry.type === 'string' && entry.type.toLowerCase() === 'sell' ? 'sell' : 'buy';
+    const type =
+      typeof entry.type === 'string' && entry.type.toLowerCase() === 'sell' ? 'sell' : 'buy';
     typeEl.value = type;
   }
 }
@@ -478,7 +800,7 @@ function cancelEditTransaction() {
 }
 
 function startEditTransaction(id) {
-  const entry = (state.txs || []).find(tx => tx.id === id);
+  const entry = (state.txs || []).find((tx) => tx.id === id);
   if (!entry) {
     showMessage('Transação não encontrada para edição.', 'warn');
     return;
@@ -489,11 +811,15 @@ function startEditTransaction(id) {
   setFormError('');
   const form = document.getElementById('tx-form');
   if (form) form.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  try { document.getElementById('tx-date')?.focus(); } catch (e) { /* noop */ }
+  try {
+    document.getElementById('tx-date')?.focus();
+  } catch (e) {
+    /* noop */
+  }
 }
 
 async function deleteTransactionById(id) {
-  const idx = state.txs.findIndex(t => t.id === id);
+  const idx = state.txs.findIndex((t) => t.id === id);
   if (idx < 0) return;
   const proceed = await confirmModalAsync('Apagar esta transação?');
   if (!proceed) return;
@@ -510,7 +836,9 @@ async function deleteTransactionById(id) {
   });
 }
 
-function uid() { return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4); }
+function uid() {
+  return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+}
 
 function loadState() {
   try {
@@ -520,7 +848,9 @@ function loadState() {
     }
     if (typeof parsed?.vs === 'string') state.vs = parsed.vs.toLowerCase();
     state.goals = hydrateGoalsState(parsed?.goals || state.goals);
-  } catch (e) { console.warn('loadState error', e); }
+  } catch (e) {
+    console.warn('loadState error', e);
+  }
   try {
     goalsController.setGoalsState(state.goals);
     goalsController.setEntries(state.txs || []);
@@ -532,7 +862,9 @@ function loadState() {
 function saveState() {
   try {
     storageSaveState(state, LS_KEY);
-  } catch (e) { console.error('saveState error', e); }
+  } catch (e) {
+    console.error('saveState error', e);
+  }
   try {
     goalsController.setEntries(state.txs || []);
   } catch (err) {
@@ -540,8 +872,11 @@ function saveState() {
   }
 }
 
-const fmtBRL = v => (Number.isFinite(Number(v)) ? Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) : '—');
-const fmtInt = v => (Number.isFinite(Number(v)) ? Number(v).toLocaleString('pt-BR') : '0');
+const fmtBRL = (v) =>
+  Number.isFinite(Number(v))
+    ? Number(v).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })
+    : '—';
+const fmtInt = (v) => (Number.isFinite(Number(v)) ? Number(v).toLocaleString('pt-BR') : '0');
 
 const currentFiatCurrency = () => {
   const vs = document.getElementById('vsCurrency')?.value || state.vs || 'USD';
@@ -574,26 +909,6 @@ const fmtPercent = (v, digits = 2) => {
   return `${num > 0 ? '+' : ''}${num.toFixed(digits)}%`;
 };
 
-function getThemeColor(variableName, fallback) {
-  try {
-    const value = getComputedStyle(document.documentElement).getPropertyValue(variableName);
-    return value ? value.trim() : fallback;
-  } catch (err) {
-    return fallback;
-  }
-}
-
-function getChartPalette() {
-  return {
-    brand: getThemeColor('--brand', '#f7931a'),
-    green: getThemeColor('--green', '#22c55e'),
-    red: getThemeColor('--red', '#ef4444'),
-    amber: getThemeColor('--amber', '#f59e0b'),
-    muted: getThemeColor('--muted', '#94a3b8'),
-    panel: getThemeColor('--panel', 'rgba(17,21,31,0.8)')
-  };
-}
-
 function showLoadingOverlay(message = 'A carregar dados...') {
   const overlay = document.getElementById('loadingOverlay');
   if (!overlay) return () => {};
@@ -612,6 +927,8 @@ function showLoadingOverlay(message = 'A carregar dados...') {
 }
 
 function getLatestMarketPrice() {
+  const livePrice = priceService?.getCurrentPrice?.(state.vs || 'usd');
+  if (Number.isFinite(livePrice)) return Number(livePrice);
   if (Array.isArray(state.prices) && state.prices.length > 0) {
     const last = state.prices[state.prices.length - 1];
     if (last && Number.isFinite(last.p)) return Number(last.p);
@@ -638,7 +955,7 @@ function createTxStatusBadge(tx) {
 }
 
 function findTxById(id) {
-  return (state.txs || []).find(tx => tx.id === id);
+  return (state.txs || []).find((tx) => tx.id === id);
 }
 
 function applyTxidValidation(tx, result) {
@@ -646,6 +963,9 @@ function applyTxidValidation(tx, result) {
   tx.validation = result;
   tx.status = result?.status || tx.status || TXID_STATUS.MANUAL;
   tx.txidLastCheckedAt = result?.fetchedAt || new Date().toISOString();
+  if (result.confirmedAt && tx.date !== result.confirmedAt) {
+    tx.date = result.confirmedAt;
+  }
 }
 
 function inferValidationTone(status) {
@@ -659,7 +979,7 @@ async function runTxidValidation(tx, options = {}) {
     quiet = false,
     skipRender = false,
     overlayMessage = 'Validando TXID…',
-    showOverlay = !quiet
+    showOverlay = !quiet,
   } = options;
   const hideOverlay = showOverlay ? showLoadingOverlay(overlayMessage) : () => {};
   try {
@@ -668,7 +988,10 @@ async function runTxidValidation(tx, options = {}) {
     saveState();
     if (!skipRender) renderAll();
     if (!quiet) {
-      showMessage(`TXID ${shortTxid(tx.txid)}: ${describeTxStatus(result.status)}`, inferValidationTone(result.status));
+      showMessage(
+        `TXID ${shortTxid(tx.txid)}: ${describeTxStatus(result.status)}`,
+        inferValidationTone(result.status)
+      );
     }
     return result;
   } catch (err) {
@@ -683,7 +1006,9 @@ async function runTxidValidation(tx, options = {}) {
 }
 
 function getTxsPendingValidation() {
-  return (state.txs || []).filter(tx => tx.txid && AUTO_VALIDATE_STATUSES.has(getEffectiveTxStatus(tx)));
+  return (state.txs || []).filter(
+    (tx) => tx.txid && AUTO_VALIDATE_STATUSES.has(getEffectiveTxStatus(tx))
+  );
 }
 
 function queueTxidValidation(id, options = {}) {
@@ -692,7 +1017,9 @@ function queueTxidValidation(id, options = {}) {
     const tx = findTxById(id);
     if (!tx || !tx.txid) return;
     if (!force && !AUTO_VALIDATE_STATUSES.has(getEffectiveTxStatus(tx))) return;
-    runTxidValidation(tx, { quiet: true, skipRender: false }).catch((err) => console.warn('Auto validação de TXID falhou', err));
+    runTxidValidation(tx, { quiet: true, skipRender: false }).catch((err) =>
+      console.warn('Auto validação de TXID falhou', err)
+    );
   }, delay);
 }
 
@@ -728,14 +1055,14 @@ function renderAudit() {
     filterId: auditFilterState.status,
     limit: auditViewState.limit,
     createTxStatusBadge,
-    getExplorerUrl: (tx) => (
+    getExplorerUrl: (tx) =>
       tx?.txid
-        ? (tx.validation?.explorerUrl || buildExplorerUrl(tx.txid, { network: inferNetworkFromTx(tx) }))
-        : null
-    ),
+        ? tx.validation?.explorerUrl ||
+          buildExplorerUrl(tx.txid, { network: inferNetworkFromTx(tx) })
+        : null,
     fmtInt,
     fmtCurrency,
-    currentFiatCurrency
+    currentFiatCurrency,
   });
 }
 
@@ -752,11 +1079,14 @@ const GOAL_DETAIL_MAX_ROWS = 50;
 
 function parseTagsInput(value = '') {
   if (!value) return [];
-  return Array.from(new Set(String(value)
-    .split(/[,;]/)
-    .map((tag) => tag.trim())
-    .filter(Boolean)))
-    .slice(0, 10);
+  return Array.from(
+    new Set(
+      String(value)
+        .split(/[,;]/)
+        .map((tag) => tag.trim())
+        .filter(Boolean)
+    )
+  ).slice(0, 10);
 }
 
 function findGoalById(goalId) {
@@ -788,8 +1118,14 @@ function renderGoalsPanel(snapshot = goalsController.getSnapshot()) {
     if (listEl) listEl.innerHTML = '';
     if (emptyEl) emptyEl.style.display = 'block';
     if (detailEl) detailEl.style.display = 'none';
-    if (editBtn) { editBtn.disabled = true; editBtn.dataset.goalId = ''; }
-    if (deleteBtn) { deleteBtn.disabled = true; deleteBtn.dataset.goalId = ''; }
+    if (editBtn) {
+      editBtn.disabled = true;
+      editBtn.dataset.goalId = '';
+    }
+    if (deleteBtn) {
+      deleteBtn.disabled = true;
+      deleteBtn.dataset.goalId = '';
+    }
     return;
   }
   if (emptyEl) emptyEl.style.display = 'none';
@@ -850,7 +1186,9 @@ function renderGoalsPanel(snapshot = goalsController.getSnapshot()) {
       listEl.appendChild(cardBtn);
     });
   }
-  const detailProgress = computedGoals.find((item) => activeGoal && item.goal.id === activeGoal.id)?.progress;
+  const detailProgress = computedGoals.find(
+    (item) => activeGoal && item.goal.id === activeGoal.id
+  )?.progress;
   renderGoalDetail(activeGoal, detailProgress, activeGoalEntries);
   if (editBtn) {
     editBtn.disabled = !activeGoal;
@@ -893,7 +1231,7 @@ function renderGoalDetail(goal, progress, entries = []) {
     { label: 'Aportes que contam', value: progress.filteredCount || 0 },
     { label: 'Sats acumulados', value: fmtInt(progress.accumulatedSats || 0) },
     { label: 'Restante', value: fmtInt(progress.remainingSats || 0) },
-    { label: 'Progresso', value: `${progress.percent || 0}%` }
+    { label: 'Progresso', value: `${progress.percent || 0}%` },
   ];
   statsEl.innerHTML = '';
   statsData.forEach((statData) => {
@@ -936,7 +1274,8 @@ function renderGoalDetail(goal, progress, entries = []) {
       const tdStrategy = document.createElement('td');
       tdStrategy.textContent = entry.strategy || '—';
       const tdTags = document.createElement('td');
-      tdTags.textContent = Array.isArray(entry.tags) && entry.tags.length ? entry.tags.join(', ') : '—';
+      tdTags.textContent =
+        Array.isArray(entry.tags) && entry.tags.length ? entry.tags.join(', ') : '—';
       tr.appendChild(tdDate);
       tr.appendChild(tdSats);
       tr.appendChild(tdFiat);
@@ -1068,7 +1407,8 @@ function openGoalModal(goalId = null) {
   const satsInput = document.getElementById('goalTargetSats');
   if (satsInput) satsInput.value = goal?.targetSats || '';
   const btcInput = document.getElementById('goalTargetBtc');
-  if (btcInput) btcInput.value = goal ? (satsToBtc(goal.targetSats) || 0).toFixed(8).replace(/\.?0+$/, '') : '';
+  if (btcInput)
+    btcInput.value = goal ? (satsToBtc(goal.targetSats) || 0).toFixed(8).replace(/\.?0+$/, '') : '';
   const strategyInput = document.getElementById('goalStrategy');
   if (strategyInput) strategyInput.value = goal?.strategy || '';
   const tagsInput = document.getElementById('goalTags');
@@ -1083,7 +1423,11 @@ function openGoalModal(goalId = null) {
   updateGoalPreview();
   modal.style.display = 'flex';
   modal.setAttribute('aria-hidden', 'false');
-  try { labelInput?.focus(); } catch (e) { /* noop */ }
+  try {
+    labelInput?.focus();
+  } catch (e) {
+    /* noop */
+  }
 }
 
 function closeGoalModal() {
@@ -1108,10 +1452,11 @@ function collectGoalFormPayload() {
   const payload = {
     id: editingGoalId || undefined,
     label,
-    targetSats: Number.isFinite(targetSatsValue) && targetSatsValue > 0 ? targetSatsValue : undefined,
+    targetSats:
+      Number.isFinite(targetSatsValue) && targetSatsValue > 0 ? targetSatsValue : undefined,
     targetBtc: Number.isFinite(targetBtcValue) && targetBtcValue > 0 ? targetBtcValue : undefined,
     createdAt: existing?.createdAt,
-    completedAt: existing?.completedAt
+    completedAt: existing?.completedAt,
   };
   if (scope === 'strategy' || scope === 'strategy-tags') {
     payload.strategy = strategyValue;
@@ -1192,7 +1537,10 @@ function renderGoalPresets() {
       const satsInput = document.getElementById('goalTargetSats');
       const btcInput = document.getElementById('goalTargetBtc');
       if (satsInput) satsInput.value = preset.targetSats;
-      if (btcInput) btcInput.value = satsToBtc(preset.targetSats).toFixed(8).replace(/\.?0+$/, '');
+      if (btcInput)
+        btcInput.value = satsToBtc(preset.targetSats)
+          .toFixed(8)
+          .replace(/\.?0+$/, '');
       applyPresetHighlight(preset.targetSats);
       updateGoalPreview();
     });
@@ -1304,21 +1652,22 @@ function createEntryFromNormalized(normalized, meta = {}) {
     strategy: meta.strategy || '',
     note: normalized.note ?? meta.note ?? '',
     createdAt: meta.createdAt || now,
-    updatedAt: meta.updatedAt || now
+    updatedAt: meta.updatedAt || now,
   });
   const merged = {
     ...entry,
     ...meta,
     btcPrice: entry.btcPrice,
     fiatAmount: entry.fiatAmount,
-    schemaVersion: SCHEMA_VERSION
+    schemaVersion: SCHEMA_VERSION,
   };
   merged.price = merged.btcPrice;
   merged.fiat = merged.fiatAmount;
   merged.closed = Boolean(normalized.closed ?? meta.closed ?? merged.closed);
   merged.weight = normalized.weight ?? meta.weight ?? null;
   if (typeof merged.exchange !== 'string') merged.exchange = '';
-  const normalizedExchange = typeof normalized.exchange === 'string' ? normalized.exchange : undefined;
+  const normalizedExchange =
+    typeof normalized.exchange === 'string' ? normalized.exchange : undefined;
   merged.exchange = normalizedExchange ?? meta.exchange ?? merged.exchange ?? '';
   const normalizedType = typeof normalized.type === 'string' ? normalized.type : undefined;
   const allowedTypes = ['buy', 'sell'];
@@ -1336,7 +1685,8 @@ function createEntryFromNormalized(normalized, meta = {}) {
 
 function ensureCanonicalEntry(entry = {}) {
   if (!entry) return null;
-  if (entry.schemaVersion === SCHEMA_VERSION && entry.fiatAmount != null && entry.btcPrice != null) return entry;
+  if (entry.schemaVersion === SCHEMA_VERSION && entry.fiatAmount != null && entry.btcPrice != null)
+    return entry;
   const price = getTxPrice(entry);
   const sats = getTxSats(entry);
   const fiat = getTxFiat(entry);
@@ -1350,7 +1700,7 @@ function ensureCanonicalEntry(entry = {}) {
     fee: entry.fee ?? 0,
     note: entry.note,
     closed: entry.closed,
-    weight: entry.weight
+    weight: entry.weight,
   });
   if (!normalized) return entry;
   const canonical = createEntryFromNormalized(normalized, {
@@ -1362,7 +1712,7 @@ function ensureCanonicalEntry(entry = {}) {
     createdAt: entry.createdAt,
     updatedAt: entry.updatedAt,
     fiatCurrency: entry.fiatCurrency,
-    id: entry.id
+    id: entry.id,
   });
   return {
     ...canonical,
@@ -1372,8 +1722,8 @@ function ensureCanonicalEntry(entry = {}) {
       fiatAmount: canonical.fiatAmount,
       price: canonical.price,
       fiat: canonical.fiat,
-      schemaVersion: SCHEMA_VERSION
-    }
+      schemaVersion: SCHEMA_VERSION,
+    },
   };
 }
 
@@ -1385,7 +1735,7 @@ function renderMonths(list = getVisibleTxs()) {
   // For now: render months January..December of the selected year (or current year)
   const yearSel = document.getElementById('yearSelect');
   const now = new Date();
-  const year = (yearSel && yearSel.value) ? parseInt(yearSel.value, 10) : now.getFullYear();
+  const year = yearSel && yearSel.value ? parseInt(yearSel.value, 10) : now.getFullYear();
   const months = [];
   for (let m = 0; m < 12; m++) months.push(new Date(year, m, 1));
 
@@ -1394,14 +1744,14 @@ function renderMonths(list = getVisibleTxs()) {
   for (const tx of list || []) {
     const t = new Date(getTxDate(tx));
     if (isNaN(t)) continue;
-    const key = `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}`;
+    const key = `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}`;
     txByMonth[key] = txByMonth[key] || [];
     txByMonth[key].push(tx);
   }
 
   // render boxes
   for (const d of months) {
-    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
     const box = document.createElement('div');
     box.className = 'monthBox';
     const monthLabel = d.toLocaleString('pt-BR', { month: 'short', year: 'numeric' });
@@ -1424,20 +1774,34 @@ function renderMonths(list = getVisibleTxs()) {
     head.appendChild(headLeft);
     box.appendChild(head);
 
-  const entries = txByMonth[key] || [];
-  const controls = document.createElement('div'); controls.style.display = 'flex'; controls.style.gap = '6px'; controls.style.marginTop = '8px';
-  const toggleBtn = document.createElement('button'); toggleBtn.className = 'btn ghost'; toggleBtn.textContent = entries.length ? `Mostrar (${entries.length})` : 'Mostrar (0)';
-  const addBtn = document.createElement('button'); addBtn.className = 'btn'; addBtn.textContent = 'Adicionar';
-  controls.appendChild(toggleBtn); controls.appendChild(addBtn);
-  box.appendChild(controls);
+    const entries = txByMonth[key] || [];
+    const controls = document.createElement('div');
+    controls.style.display = 'flex';
+    controls.style.gap = '6px';
+    controls.style.marginTop = '8px';
+    const toggleBtn = document.createElement('button');
+    toggleBtn.className = 'btn ghost';
+    toggleBtn.textContent = entries.length ? `Mostrar (${entries.length})` : 'Mostrar (0)';
+    const addBtn = document.createElement('button');
+    addBtn.className = 'btn';
+    addBtn.textContent = 'Adicionar';
+    controls.appendChild(toggleBtn);
+    controls.appendChild(addBtn);
+    box.appendChild(controls);
 
-  const entriesList = document.createElement('div');
-  entriesList.style.display = 'none'; entriesList.style.gap = '6px'; entriesList.style.marginTop = '8px';
+    const entriesList = document.createElement('div');
+    entriesList.style.display = 'none';
+    entriesList.style.gap = '6px';
+    entriesList.style.marginTop = '8px';
     if (entries.length === 0) {
-      const p = document.createElement('div'); p.className='muted'; p.textContent = '—'; entriesList.appendChild(p);
+      const p = document.createElement('div');
+      p.className = 'muted';
+      p.textContent = '—';
+      entriesList.appendChild(p);
     } else {
       for (const e of entries) {
-        const row = document.createElement('div'); row.className = 'entry';
+        const row = document.createElement('div');
+        row.className = 'entry';
         const info = document.createElement('div');
         info.style.display = 'grid';
         info.style.gap = '2px';
@@ -1491,8 +1855,12 @@ function renderMonths(list = getVisibleTxs()) {
     // wire toggle
     toggleBtn.addEventListener('click', () => {
       if (entriesList.style.display === 'none') {
-        entriesList.style.display = 'grid'; toggleBtn.textContent = `Ocultar (${entries.length})`;
-      } else { entriesList.style.display = 'none'; toggleBtn.textContent = `Mostrar (${entries.length})`; }
+        entriesList.style.display = 'grid';
+        toggleBtn.textContent = `Ocultar (${entries.length})`;
+      } else {
+        entriesList.style.display = 'none';
+        toggleBtn.textContent = `Mostrar (${entries.length})`;
+      }
     });
     // wire add: prefill form date and focus price
     addBtn.addEventListener('click', () => {
@@ -1502,11 +1870,17 @@ function renderMonths(list = getVisibleTxs()) {
         const txSats = document.getElementById('tx-sats');
         const y = d.getFullYear();
         const m = String(d.getMonth() + 1).padStart(2, '0');
-        if (txDate) { txDate.value = `${y}-${m}-01`; txDate.focus(); }
+        if (txDate) {
+          txDate.value = `${y}-${m}-01`;
+          txDate.focus();
+        }
         if (txPrice) txPrice.focus();
         // scroll form into view
-        const form = document.getElementById('tx-form'); if (form) form.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      } catch (e) { console.warn('addBtn handler error', e); }
+        const form = document.getElementById('tx-form');
+        if (form) form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } catch (e) {
+        console.warn('addBtn handler error', e);
+      }
     });
   }
 }
@@ -1518,6 +1892,13 @@ function bindForm() {
   if (cancelBtn && !cancelBtn.dataset.bound) {
     cancelBtn.dataset.bound = 'true';
     cancelBtn.addEventListener('click', () => cancelEditTransaction());
+  }
+  const deleteEditBtn = document.getElementById('tx-delete-edit');
+  if (deleteEditBtn && !deleteEditBtn.dataset.bound) {
+    deleteEditBtn.dataset.bound = 'true';
+    deleteEditBtn.addEventListener('click', () => {
+      if (editingTxId) deleteTransactionById(editingTxId);
+    });
   }
   updateFormModeUI(Boolean(editingTxId));
   form.addEventListener('submit', (e) => {
@@ -1580,10 +1961,10 @@ function bindForm() {
       wallet: walletValue || '',
       status: txidValue ? TXID_STATUS.PENDING : TXID_STATUS.MANUAL,
       strategy: strategyValue,
-      tags: tagList
+      tags: tagList,
     };
     if (editingTxId) {
-      const idx = state.txs.findIndex(t => t.id === editingTxId);
+      const idx = state.txs.findIndex((t) => t.id === editingTxId);
       if (idx < 0) {
         setFormError('Entrada a editar não encontrada.');
         return;
@@ -1605,7 +1986,7 @@ function bindForm() {
         tags: tagList,
         fiatCurrency: current.fiatCurrency,
         createdAt: current.createdAt,
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date().toISOString(),
       });
       if (!updated) {
         setFormError('Erro ao criar a entrada canônica.');
@@ -1617,9 +1998,9 @@ function bindForm() {
         updated.status = current.validation.status || updated.status;
       }
       state.txs.splice(idx, 1, updated);
-       if (updated.txid && (!sameTxid || !updated.validation)) {
-         txidToAutoValidate = updated.id;
-       }
+      if (updated.txid && (!sameTxid || !updated.validation)) {
+        txidToAutoValidate = updated.id;
+      }
       editingTxId = null;
       updateFormModeUI(false);
       form.reset();
@@ -1662,7 +2043,11 @@ async function handleValidateTxid(id) {
 
 function buildExportPayload() {
   const entries = Array.isArray(state.txs) ? state.txs : [];
-  const vsCurrency = (document.getElementById('vsCurrency')?.value || state.vs || 'usd').toLowerCase();
+  const vsCurrency = (
+    document.getElementById('vsCurrency')?.value ||
+    state.vs ||
+    'usd'
+  ).toLowerCase();
   return {
     version: 1,
     schemaVersion: SCHEMA_VERSION,
@@ -1670,7 +2055,7 @@ function buildExportPayload() {
     vs: vsCurrency,
     entries,
     txs: entries,
-    goals: state.goals
+    goals: state.goals,
   };
 }
 
@@ -1694,7 +2079,7 @@ const CSV_HEADERS = [
   'txid_reason',
   'txid_confirmations',
   'txid_last_checked',
-  'note'
+  'note',
 ];
 
 function getExportCsv() {
@@ -1706,7 +2091,7 @@ function getExportCsv() {
     const row = [
       entry.id || '',
       getTxDate(entry) || '',
-      (entry.type || 'buy'),
+      entry.type || 'buy',
       getTxSats(entry) || 0,
       btcAmount ? btcAmount.toFixed(8) : '0',
       Number.isFinite(getTxPrice(entry)) ? Number(getTxPrice(entry)).toFixed(2) : '',
@@ -1719,7 +2104,7 @@ function getExportCsv() {
       validation.reason || '',
       Number.isFinite(validation.confirmations) ? validation.confirmations : '',
       entry.txidLastCheckedAt || validation.fetchedAt || '',
-      getTxNote(entry) || ''
+      getTxNote(entry) || '',
     ];
     lines.push(row.map(csvEscape).join(','));
   });
@@ -1732,7 +2117,7 @@ function downloadExportFile(jsonText = getExportJson(true)) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `btc_journal_backup_${new Date().toISOString().slice(0,10)}.json`;
+    a.download = `btc_journal_backup_${new Date().toISOString().slice(0, 10)}.json`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -1750,7 +2135,7 @@ function downloadExportCsv(csvText = getExportCsv()) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `btc_journal_backup_${new Date().toISOString().slice(0,10)}.csv`;
+    a.download = `btc_journal_backup_${new Date().toISOString().slice(0, 10)}.csv`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -1766,7 +2151,7 @@ function populateExportPreview() {
   const json = getExportJson(true);
   return renderExportPreview({
     json,
-    entryCount: Array.isArray(state.txs) ? state.txs.length : 0
+    entryCount: Array.isArray(state.txs) ? state.txs.length : 0,
   });
 }
 
@@ -1820,16 +2205,24 @@ function populateImportPreview(payload) {
     fmtCurrency,
     getTxDate,
     getTxFiat,
-    getTxPrice
+    getTxPrice,
   });
 }
 
 function applyPendingImport() {
-  if (!pendingImportPayload || !Array.isArray(pendingImportPayload.entries) || pendingImportPayload.entries.length === 0) {
+  if (
+    !pendingImportPayload ||
+    !Array.isArray(pendingImportPayload.entries) ||
+    pendingImportPayload.entries.length === 0
+  ) {
     showMessage('Nenhum arquivo pronto para importação.', 'warn');
     return;
   }
-  try { backupLocalData(LS_KEY); } catch (err) { console.warn('backupLocalData import failed', err); }
+  try {
+    backupLocalData(LS_KEY);
+  } catch (err) {
+    console.warn('backupLocalData import failed', err);
+  }
   state.txs = pendingImportPayload.entries;
   if (pendingImportPayload.vs) {
     state.vs = pendingImportPayload.vs;
@@ -1847,7 +2240,10 @@ function applyPendingImport() {
   const invalidMsg = pendingImportPayload.invalidCount
     ? ` (${pendingImportPayload.invalidCount} inválida${pendingImportPayload.invalidCount === 1 ? '' : 's'} ignorada${pendingImportPayload.invalidCount === 1 ? '' : 's'})`
     : '';
-  showMessage(`Importação concluída: ${pendingImportPayload.entries.length} entradas aplicadas${invalidMsg}.`, 'success');
+  showMessage(
+    `Importação concluída: ${pendingImportPayload.entries.length} entradas aplicadas${invalidMsg}.`,
+    'success'
+  );
   closeImportModal();
 }
 
@@ -1863,7 +2259,7 @@ async function handleImportFile(file) {
     const container = {
       entries: prepared.entries,
       vs: prepared.meta?.vs,
-      year: prepared.meta?.year
+      year: prepared.meta?.year,
     };
     const importedGoals = prepared.goals ? hydrateGoalsState(prepared.goals) : null;
     const sanitized = sanitizeImportPayload(container);
@@ -1871,17 +2267,19 @@ async function handleImportFile(file) {
       showMessage(sanitized.reason || 'Arquivo inválido.', 'error');
       return;
     }
-    const canonicalEntries = sanitized.entries.map((entry, index) => {
-      const source = sanitized.sources?.[index] || {};
-      const canonical = createEntryFromNormalized(entry, source);
-      if (!canonical) return null;
-      if (source.validation && typeof source.validation === 'object') {
-        canonical.validation = { ...source.validation };
-      }
-      if (source.status) canonical.status = source.status;
-      if (source.txidLastCheckedAt) canonical.txidLastCheckedAt = source.txidLastCheckedAt;
-      return canonical;
-    }).filter(Boolean);
+    const canonicalEntries = sanitized.entries
+      .map((entry, index) => {
+        const source = sanitized.sources?.[index] || {};
+        const canonical = createEntryFromNormalized(entry, source);
+        if (!canonical) return null;
+        if (source.validation && typeof source.validation === 'object') {
+          canonical.validation = { ...source.validation };
+        }
+        if (source.status) canonical.status = source.status;
+        if (source.txidLastCheckedAt) canonical.txidLastCheckedAt = source.txidLastCheckedAt;
+        return canonical;
+      })
+      .filter(Boolean);
     if (!canonicalEntries.length) {
       showMessage('Nenhuma entrada válida após normalização.', 'warn');
       return;
@@ -1892,7 +2290,7 @@ async function handleImportFile(file) {
       vs: sanitized.vs,
       sourceCount: sanitized.entries.length,
       fileName: file?.name || 'import.json',
-      goals: importedGoals
+      goals: importedGoals,
     };
     populateImportPreview(pendingImportPayload);
     openImportModal();
@@ -1905,9 +2303,18 @@ async function handleImportFile(file) {
 }
 
 // Mensagens/banners UI
-function showMessage(text, type = 'info', timeout = 4500, actionLabel = null, actionCallback = null) {
+function showMessage(
+  text,
+  type = 'info',
+  timeout = 4500,
+  actionLabel = null,
+  actionCallback = null
+) {
   const container = document.getElementById('messageContainer');
-  if (!container) { if (typeof window !== 'undefined' && window.alert) window.alert(text); return; }
+  if (!container) {
+    if (typeof window !== 'undefined' && window.alert) window.alert(text);
+    return;
+  }
   const el = document.createElement('div');
   el.className = `msg ${type}`;
   const span = document.createElement('span');
@@ -1919,7 +2326,11 @@ function showMessage(text, type = 'info', timeout = 4500, actionLabel = null, ac
     actionBtn.className = 'action';
     actionBtn.textContent = actionLabel;
     actionBtn.addEventListener('click', () => {
-      try { if (typeof actionCallback === 'function') actionCallback(); } catch (e) { console.error(e); }
+      try {
+        if (typeof actionCallback === 'function') actionCallback();
+      } catch (e) {
+        console.error(e);
+      }
       el.remove();
     });
     el.appendChild(actionBtn);
@@ -1943,7 +2354,10 @@ function confirmModalAsync(message) {
     const msg = document.getElementById('confirmModalMessage');
     const ok = document.getElementById('confirmOkBtn');
     const cancel = document.getElementById('confirmCancelBtn');
-    if (!modal || !msg || !ok || !cancel) { resolve(window.confirm(message)); return; }
+    if (!modal || !msg || !ok || !cancel) {
+      resolve(window.confirm(message));
+      return;
+    }
     msg.textContent = message;
     modal.style.display = 'flex';
     function cleanup() {
@@ -1951,8 +2365,14 @@ function confirmModalAsync(message) {
       cancel.removeEventListener('click', onCancel);
       modal.style.display = 'none';
     }
-    function onOk() { cleanup(); resolve(true); }
-    function onCancel() { cleanup(); resolve(false); }
+    function onOk() {
+      cleanup();
+      resolve(true);
+    }
+    function onCancel() {
+      cleanup();
+      resolve(false);
+    }
     ok.addEventListener('click', onOk);
     cancel.addEventListener('click', onCancel);
   });
@@ -1967,23 +2387,37 @@ function detectAndOfferMigration() {
     if (!old) return;
     const existingState = storageLoadState(LS_KEY) || {};
     const hasNew = Array.isArray(existingState?.txs) && existingState.txs.length > 0;
-    const proceed = confirm('Dados antigos detectados (btcJournalV1). Deseja migrar para o novo formato? Será criado um backup antes.');
+    const proceed = confirm(
+      'Dados antigos detectados (btcJournalV1). Deseja migrar para o novo formato? Será criado um backup antes.'
+    );
     if (!proceed) return;
     if (hasNew) {
-      const overwrite = confirm('Já existem dados no formato novo. Migrar vai sobrescrever os aportes atuais. Tem certeza que deseja continuar?');
+      const overwrite = confirm(
+        'Já existem dados no formato novo. Migrar vai sobrescrever os aportes atuais. Tem certeza que deseja continuar?'
+      );
       if (!overwrite) {
         showMessage('Migração cancelada. Seus dados atuais foram preservados.', 'info');
         return;
       }
     }
     // criar backup via helper para não perder dados legados
-    try { backupLocalData('btcJournalV1'); } catch (e) { console.warn('Backup antigo falhou', e); }
+    try {
+      backupLocalData('btcJournalV1');
+    } catch (e) {
+      console.warn('Backup antigo falhou', e);
+    }
     const migrated = migrateV1ToV3(old);
     // Suportar array de entradas ou object { entries: [...] }
     const payload = Array.isArray(migrated?.txs) ? { entries: migrated.txs } : null;
-    if (!payload) { showMessage('Formato de backup antigo não reconhecido.', 'error'); return; }
+    if (!payload) {
+      showMessage('Formato de backup antigo não reconhecido.', 'error');
+      return;
+    }
     const res = sanitizeImportPayload(payload);
-    if (!res.ok) { showMessage('Migração detectou entradas inválidas. Nenhuma alteração aplicada.', 'error'); return; }
+    if (!res.ok) {
+      showMessage('Migração detectou entradas inválidas. Nenhuma alteração aplicada.', 'error');
+      return;
+    }
     // Aplicar migracao: mapear para txs minimal
     state.txs = res.entries
       .map((entry, index) => createEntryFromNormalized(entry, res.sources?.[index]))
@@ -2015,7 +2449,9 @@ function openChartGlass() {
   // render glass chart (non-destructive)
   try {
     renderChartToCanvas('glassBtcChart');
-  } catch (e) { console.warn('glass render error', e); }
+  } catch (e) {
+    console.warn('glass render error', e);
+  }
 }
 
 function closeChartGlass() {
@@ -2023,7 +2459,12 @@ function closeChartGlass() {
   if (!overlay) return;
   overlay.setAttribute('aria-hidden', 'true');
   overlay.style.display = 'none';
-  try { if (glassChartInstance) { glassChartInstance.destroy(); glassChartInstance = null; } } catch (e) {}
+  try {
+    if (glassChartInstance) {
+      glassChartInstance.destroy();
+      glassChartInstance = null;
+    }
+  } catch (e) {}
 }
 
 const MIN_POINT_RADIUS = 3;
@@ -2065,11 +2506,11 @@ function createChartPoint(tx, currentPrice) {
     closed: Boolean(tx.closed),
     fiat: getTxFiat(tx),
     plPct,
-    id: tx.id
+    id: tx.id,
   };
 }
 
-function buildEntryDataset(points = [], palette = {}) {
+function buildEntryDataset(points = []) {
   return {
     type: 'scatter',
     label: 'Entradas',
@@ -2081,18 +2522,21 @@ function buildEntryDataset(points = [], palette = {}) {
     pointHoverRadius(context) {
       return Math.min(MAX_POINT_RADIUS + 2, computePointRadius(context.raw?.sats || 0) + 2);
     },
+    pointHitRadius(context) {
+      return Math.min(MAX_POINT_RADIUS + 6, computePointRadius(context.raw?.sats || 0) + 6);
+    },
     pointBackgroundColor(context) {
       const raw = context.raw || {};
-      if (raw.closed) return palette.muted || '#94a3b8';
-      if (raw.type === 'sell') return palette.amber || '#f59e0b';
-      if (raw.plPct > 0) return palette.green || '#22c55e';
-      if (raw.plPct < 0) return palette.red || '#ef4444';
-      return palette.amber || '#f59e0b';
+      if (raw.closed) return chartTokens.textMuted();
+      if (raw.type === 'sell') return chartTokens.warn();
+      if (raw.plPct > 0) return chartTokens.ok();
+      if (raw.plPct < 0) return chartTokens.danger();
+      return chartTokens.warn();
     },
     pointBorderColor(context) {
       const raw = context.raw || {};
-      if (raw.closed) return palette.muted || '#94a3b8';
-      return '#0b1220';
+      if (raw.closed) return chartTokens.textMuted();
+      return chartTokens.bgPage();
     },
     pointBorderWidth: 1,
     pointStyle(context) {
@@ -2101,29 +2545,155 @@ function buildEntryDataset(points = [], palette = {}) {
       if (raw.type === 'sell') return 'triangle';
       return 'circle';
     },
-    order: 10
+    order: 10,
   };
 }
 
-function buildAverageDataset(length = 0, avgPrice = 0, palette = {}) {
+function buildAverageDataset(length = 0, avgPrice = 0) {
   return {
     label: 'Preço médio',
     type: 'line',
     data: Array.from({ length }, () => avgPrice),
-    borderColor: palette.amber || '#f59e0b',
+    borderColor: chartTokens.warn(),
     borderDash: [6, 6],
     borderWidth: 1,
     pointRadius: 0,
     tension: 0,
-    order: 2
+    order: 2,
   };
 }
 
-function isAnnotationAvailable() {
-  return typeof Chart !== 'undefined' && Chart.registry && Chart.registry.getPlugin && Chart.registry.getPlugin('annotation');
+function isValidLineChartPoint(point) {
+  if (Number.isFinite(point)) return true;
+  return Boolean(point && Number.isFinite(point.x) && Number.isFinite(point.y));
 }
 
-function buildChartOptions(series, palette, options = {}) {
+function isValidScatterChartPoint(point) {
+  return Boolean(point && Number.isFinite(point.x) && Number.isFinite(point.y));
+}
+
+function isValidCandlestickPoint(point) {
+  return Boolean(
+    point &&
+    Number.isFinite(point.x) &&
+    Number.isFinite(point.o) &&
+    Number.isFinite(point.h) &&
+    Number.isFinite(point.l) &&
+    Number.isFinite(point.c)
+  );
+}
+
+function sanitizeChartDataset(dataset = {}) {
+  const next = { ...dataset };
+  const originalData = Array.isArray(dataset.data) ? dataset.data : [];
+
+  if (next.type === 'candlestick') {
+    next.data = originalData.filter(isValidCandlestickPoint);
+    return next;
+  }
+
+  if (next.type === 'scatter') {
+    next.data = originalData.filter(isValidScatterChartPoint);
+    if (!Number.isFinite(next.pointHitRadius)) next.pointHitRadius = MAX_POINT_RADIUS + 6;
+    return next;
+  }
+
+  next.data = originalData.filter(isValidLineChartPoint);
+  if (!Number.isFinite(next.pointHitRadius)) next.pointHitRadius = 8;
+  return next;
+}
+
+function sanitizeChartConfig(cfg) {
+  const datasets = Array.isArray(cfg?.data?.datasets) ? cfg.data.datasets : [];
+  const sanitizedDatasets = datasets
+    .map((dataset) => sanitizeChartDataset(dataset))
+    .filter((dataset) => Array.isArray(dataset.data) && dataset.data.length > 0);
+  return {
+    ...cfg,
+    data: {
+      ...(cfg?.data || {}),
+      datasets: sanitizedDatasets,
+    },
+  };
+}
+
+function getPrimaryPriceDataset(cfg) {
+  const datasets = Array.isArray(cfg?.data?.datasets) ? cfg.data.datasets : [];
+  return (
+    datasets.find(
+      (dataset) =>
+        dataset?.type !== 'scatter' &&
+        dataset?.type !== 'candlestick' &&
+        typeof dataset?.label === 'string' &&
+        dataset.label.startsWith('BTC/')
+    ) || null
+  );
+}
+
+function isAnnotationAvailable() {
+  return (
+    typeof Chart !== 'undefined' &&
+    Chart.registry &&
+    Chart.registry.getPlugin &&
+    Chart.registry.getPlugin('annotation')
+  );
+}
+
+function getActiveChartPoint(chart) {
+  const tooltipPoints = chart?.tooltip?.dataPoints;
+  if (Array.isArray(tooltipPoints) && tooltipPoints.length > 0) {
+    const point = tooltipPoints[0];
+    const x = point?.element?.x;
+    const y = point?.element?.y;
+    const value = point?.parsed?.y;
+    if (Number.isFinite(x) && Number.isFinite(y)) {
+      return { x, y, value: Number.isFinite(value) ? value : null };
+    }
+  }
+
+  const active = typeof chart?.getActiveElements === 'function' ? chart.getActiveElements() : [];
+  if (!Array.isArray(active) || active.length === 0) return null;
+
+  const { datasetIndex, index } = active[0];
+  const meta =
+    typeof chart?.getDatasetMeta === 'function' ? chart.getDatasetMeta(datasetIndex) : null;
+  const element = meta?.data?.[index];
+  const raw = chart?.data?.datasets?.[datasetIndex]?.data?.[index];
+  const rawValue = Number.isFinite(raw?.y) ? raw.y : Number.isFinite(raw) ? raw : null;
+
+  if (Number.isFinite(element?.x) && Number.isFinite(element?.y)) {
+    return { x: element.x, y: element.y, value: rawValue };
+  }
+
+  return null;
+}
+
+const chartCrosshairPlugin = {
+  id: 'btcJournalCrosshair',
+  afterDraw(chart, _args, pluginOptions) {
+    const point = getActiveChartPoint(chart);
+    const area = chart?.chartArea;
+    if (!point || !area) return;
+
+    const { x, y } = point;
+    if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+
+    const ctx = chart.ctx;
+    ctx.save();
+    ctx.beginPath();
+    ctx.setLineDash(Array.isArray(pluginOptions?.dash) ? pluginOptions.dash : [4, 4]);
+    ctx.lineWidth = Number.isFinite(pluginOptions?.lineWidth) ? pluginOptions.lineWidth : 1;
+    ctx.strokeStyle = pluginOptions?.color || chartTokens.chartCrosshair();
+    ctx.moveTo(x, area.top);
+    ctx.lineTo(x, area.bottom);
+    ctx.moveTo(area.left, y);
+    ctx.lineTo(area.right, y);
+    ctx.stroke();
+    ctx.restore();
+  },
+};
+
+function buildChartOptions(series, options = {}) {
   const { avgPrice } = series;
   const { min, max } = ensureChartRange();
   const vsCurrency = options.vsLabel || currentFiatCurrency();
@@ -2134,36 +2704,50 @@ function buildChartOptions(series, palette, options = {}) {
     const value = raw.parsed?.x ?? raw.label ?? raw.parsed;
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return '';
-    return date.toLocaleString('pt-BR', { year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+    return date.toLocaleString('pt-BR', {
+      year: 'numeric',
+      month: 'short',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
   };
 
   return {
     responsive: true,
     maintainAspectRatio: false,
+    interaction: {
+      mode: 'nearest',
+      intersect: false,
+      axis: 'x',
+    },
     scales: {
       x: {
         type: 'time',
-        time: { unit: 'month', displayFormats: { month: 'short' } },
+        time: { unit: 'month', displayFormats: { month: 'MMM yyyy' } },
         min,
         max,
         ticks: {
-          color: palette.muted || '#94a3b8',
+          color: chartTokens.textMuted(),
           maxRotation: 0,
           autoSkip: true,
-          maxTicksLimit: options.compact ? 6 : 12
+          maxTicksLimit: options.compact ? 6 : 12,
         },
-        grid: { color: 'rgba(255,255,255,0.05)' }
+        grid: { color: chartTokens.chartGrid() },
       },
       y: {
-        ticks: { color: palette.muted || '#94a3b8' },
-        grid: { color: 'rgba(255,255,255,0.05)' }
-      }
+        ticks: { color: chartTokens.textMuted() },
+        grid: { color: chartTokens.chartGrid() },
+      },
     },
     plugins: {
-      legend: { labels: { color: palette.muted || '#94a3b8' } },
+      legend: { labels: { color: chartTokens.textMuted() } },
+      btcJournalCrosshair: {
+        color: chartTokens.textMuted(),
+        dash: [4, 4],
+        lineWidth: 1,
+      },
       tooltip: {
-        mode: 'nearest',
-        intersect: false,
         callbacks: {
           title: tooltipTitle,
           label(context) {
@@ -2181,14 +2765,14 @@ function buildChartOptions(series, palette, options = {}) {
             }
             const value = context.parsed?.y ?? context.formattedValue;
             return `${context.dataset.label}: ${formatCurrencyValue(value)}`;
-          }
-        }
-      }
-    }
+          },
+        },
+      },
+    },
   };
 }
 
-function buildChartConfig(series, palette, options = {}) {
+function buildChartConfig(series, options = {}) {
   const mode = getChartMode();
   const includeCandles = options.includeCandles ?? mode === 'candles';
   const datasets = [];
@@ -2198,33 +2782,44 @@ function buildChartConfig(series, palette, options = {}) {
       label: 'OHLC',
       type: 'candlestick',
       data: candData,
-      color: { up: palette.green || '#22c55e', down: palette.red || '#ef4444' },
-      order: 0
+      color: { up: chartTokens.ok(), down: chartTokens.danger() },
+      order: 0,
     });
   }
   const vsLabel = (document.getElementById('vsCurrency')?.value || state.vs || 'USD').toUpperCase();
+  const pricePoints = series.labels
+    .map((t, i) => ({ x: t, y: series.priceData[i] }))
+    .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
   datasets.push({
     label: `BTC/${vsLabel}`,
-    data: series.priceData,
+    data: pricePoints,
     parsing: false,
     borderWidth: 1.5,
-    borderColor: palette.brand || '#f7931a',
-    backgroundColor: 'transparent',
-    pointRadius: 0,
+    borderColor: chartTokens.accent(),
+    backgroundColor: 'transparent' /* intentional: no fill under price line */,
+    pointRadius(context) {
+      return context.active ? 3 : 0;
+    },
+    pointHoverRadius: 4,
+    pointHitRadius: 10,
+    pointBackgroundColor: chartTokens.accent(),
+    pointBorderColor: chartTokens.bgSurface(),
+    pointBorderWidth: 1,
     tension: 0.2,
-    order: 1
+    order: 1,
   });
-  datasets.push(buildEntryDataset(series.points, palette));
+  datasets.push(buildEntryDataset(series.points));
 
   const useAnnotation = options.allowAnnotation && isAnnotationAvailable();
   if (!useAnnotation && options.addAverageDataset && series.avgPrice > 0) {
-    datasets.push(buildAverageDataset(series.labels.length, series.avgPrice, palette));
+    datasets.push(buildAverageDataset(series.labels.length, series.avgPrice));
   }
 
   const cfg = {
     type: 'line',
     data: { labels: series.labels, datasets },
-    options: buildChartOptions(series, palette, { ...options, vsLabel })
+    options: buildChartOptions(series, { ...options, vsLabel }),
+    plugins: [chartCrosshairPlugin],
   };
 
   if (useAnnotation && series.avgPrice > 0) {
@@ -2235,23 +2830,23 @@ function buildChartConfig(series, palette, options = {}) {
           type: 'line',
           yMin: series.avgPrice,
           yMax: series.avgPrice,
-          borderColor: palette.amber || '#f59e0b',
+          borderColor: chartTokens.warn(),
           borderWidth: 1,
           borderDash: [6, 6],
           label: {
             enabled: true,
             content: `PM ${fmtCurrency(series.avgPrice, vsLabel)}`,
             position: 'end',
-            backgroundColor: palette.panel || 'rgba(0,0,0,0.6)',
-            color: palette.amber || '#f59e0b',
-            padding: 4
-          }
-        }
-      }
+            backgroundColor: chartTokens.bgSurface(),
+            color: chartTokens.warn(),
+            padding: 4,
+          },
+        },
+      },
     };
   }
 
-  return cfg;
+  return sanitizeChartConfig(cfg);
 }
 
 function renderChartToCanvas(canvasId = 'btcChart', visibleTxs = getVisibleTxs()) {
@@ -2268,27 +2863,53 @@ function renderChartToCanvas(canvasId = 'btcChart', visibleTxs = getVisibleTxs()
     scheduleOhlcFetch(fetchRange, vs, () => renderChartToCanvas(canvasId, visibleTxs));
     return;
   }
-  const palette = getChartPalette();
   const series = buildChartSeries(visibleTxs);
-  const cfg = buildChartConfig(series, palette, {
+  const cfg = buildChartConfig(series, {
     includeCandles: getChartMode() === 'candles',
     allowAnnotation: true,
     addAverageDataset: true,
-    compact: canvasId === 'glassBtcChart'
+    compact: canvasId === 'glassBtcChart',
   });
+  const priceDataset = getPrimaryPriceDataset(cfg);
+  const hasPriceSeries = Array.isArray(priceDataset?.data) && priceDataset.data.length > 0;
+  if (!hasPriceSeries) {
+    if (canvasId === 'glassBtcChart') {
+      destroyChartForCanvas(canvas);
+      glassChartInstance = null;
+      return null;
+    }
+    destroyMainChartInstance();
+    const issue = resolvePriceFetchIssue(lastPriceFetchIssue, vs);
+    setChartEmptyState(issue.title, issue.detail);
+    return null;
+  }
 
   // destroy previous glass chart if exists
   if (canvasId === 'glassBtcChart') {
-    if (glassChartInstance) { try { glassChartInstance.destroy(); } catch (e) {} }
+    destroyChartForCanvas(canvas);
+    if (glassChartInstance) glassChartInstance = null;
     glassChartInstance = new Chart(canvas.getContext('2d'), cfg);
     // Forçar resize no próximo frame para garantir que o canvas use o tamanho do container
-    try { requestAnimationFrame(() => { if (glassChartInstance && typeof glassChartInstance.resize === 'function') glassChartInstance.resize(); }); } catch (e) { /* noop */ }
+    try {
+      requestAnimationFrame(() => {
+        if (glassChartInstance && typeof glassChartInstance.resize === 'function')
+          glassChartInstance.resize();
+      });
+    } catch (e) {
+      /* noop */
+    }
     return glassChartInstance;
   } else {
-    // fallback: use global chart creation (existing function)
-    if (window.btcChart && typeof window.btcChart.destroy === 'function') try { window.btcChart.destroy(); } catch (e) {}
+    destroyMainChartInstance();
     window.btcChart = new Chart(canvas.getContext('2d'), cfg);
-    try { requestAnimationFrame(() => { if (window.btcChart && typeof window.btcChart.resize === 'function') window.btcChart.resize(); }); } catch (e) { /* noop */ }
+    try {
+      requestAnimationFrame(() => {
+        if (window.btcChart && typeof window.btcChart.resize === 'function')
+          window.btcChart.resize();
+      });
+    } catch (e) {
+      /* noop */
+    }
     return window.btcChart;
   }
 }
@@ -2305,7 +2926,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const planBtn = document.getElementById('openPlanilhaBtn');
     const monthsCard = document.getElementById('monthsContainer');
     if (planBtn) {
-      planBtn.disabled = false; planBtn.removeAttribute('aria-disabled'); planBtn.title = planBtn.title?.replace(/\(desativado\)/i, '') || 'Ir para Aportes';
+      planBtn.disabled = false;
+      planBtn.removeAttribute('aria-disabled');
+      planBtn.title = planBtn.title?.replace(/\(desativado\)/i, '') || 'Ir para Aportes';
       planBtn.addEventListener('click', (ev) => {
         ev.preventDefault();
         if (!monthsCard) return;
@@ -2314,14 +2937,22 @@ document.addEventListener('DOMContentLoaded', () => {
         monthsCard.classList.add('highlight');
         monthsCard.setAttribute('aria-live', 'polite');
         setTimeout(() => monthsCard.classList.remove('highlight'), 1400);
-        try { planBtn.setAttribute('aria-pressed', 'true'); setTimeout(() => planBtn.setAttribute('aria-pressed', 'false'), 1400); } catch (e) {}
+        try {
+          planBtn.setAttribute('aria-pressed', 'true');
+          setTimeout(() => planBtn.setAttribute('aria-pressed', 'false'), 1400);
+        } catch (e) {}
       });
     }
-  } catch (e) { /* noop */ }
+  } catch (e) {
+    /* noop */
+  }
 });
 
 function boot() {
   loadState();
+  priceService = createPriceService({ fetcher: createCoinGeckoFetcher() });
+  priceService.onPriceUpdate(() => renderTableAndStats());
+  priceService.startPolling(state.vs || 'usd');
   hydrateChartMode();
   // tentar detectar e migrar dados antigos (btcJournalV1)
   detectAndOfferMigration();
@@ -2330,7 +2961,7 @@ function boot() {
   bindTableActions({
     onEdit: startEditTransaction,
     onValidate: handleValidateTxid,
-    onDelete: deleteTransactionById
+    onDelete: deleteTransactionById,
   });
   bindImportExport({
     onOpenExport: openExportModal,
@@ -2340,7 +2971,7 @@ function boot() {
     onImportFile: handleImportFile,
     onApplyImport: applyPendingImport,
     onCloseImport: () => closeImportModal(),
-    onCloseExport: closeExportModal
+    onCloseExport: closeExportModal,
   });
   bindFilters({
     onChange: () => {
@@ -2359,102 +2990,133 @@ function boot() {
         totalCount: (state.txs || []).length,
         activeCount: getActiveFiltersCount(),
         sort: filterState.sort,
-        describeSortLabel
+        describeSortLabel,
       });
-    }
+    },
   });
   bindYearSelect({
     onChange: () => {
       renderMonths();
       renderChart();
-    }
+    },
   });
   bindChartFilterToggle();
+  const resetBtn = document.getElementById('resetBtn');
+  if (resetBtn && !resetBtn.dataset.bound) {
+    resetBtn.dataset.bound = 'true';
+    resetBtn.addEventListener('click', async () => {
+      const ok = await confirmModalAsync(
+        'Apagar todos os dados locais? Esta ação não pode ser desfeita.'
+      );
+      if (!ok) return;
+      try {
+        localStorage.removeItem('btc_journal_state_v3');
+      } catch (e) {
+        /* noop */
+      }
+      window.location.reload();
+    });
+  }
   bindAuditControls({
     onValidatePending: () => validatePendingTxids(),
     onFilterChange: (filterId) => setAuditFilter(filterId),
     onShowMore: () => {
       auditViewState.limit = Math.min(AUDIT_TABLE_MAX, auditViewState.limit + AUDIT_TABLE_STEP);
       renderAudit();
-    }
+    },
   });
   bindGoalControls();
   hydrateYearOptions();
   renderAll();
-  
-    // Compat: listener mínimo para alternar dock do gráfico conforme prompt
-    (function attachChartDockToggle() {
-      const dock = document.getElementById('chartDock');
-      const toggle = document.getElementById('chartToggleBtn');
-      if (dock && toggle) {
-        toggle.addEventListener('click', () => {
-          const expanded = dock.classList.toggle('is-expanded');
-          toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-          toggle.textContent = expanded ? '↓ Recolher gráfico' : '↑ Expandir gráfico';
-          // apenas trocar classes/aria/text — não alterar state nem recriar gráficos
+
+  // Compat: listener mínimo para alternar dock do gráfico conforme prompt
+  (function attachChartDockToggle() {
+    const dock = document.getElementById('chartDock');
+    const toggle = document.getElementById('chartToggleBtn');
+    if (dock && toggle) {
+      toggle.addEventListener('click', () => {
+        const expanded = dock.classList.toggle('is-expanded');
+        toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        toggle.textContent = expanded ? '↓ Recolher gráfico' : '↑ Expandir gráfico';
+        // apenas trocar classes/aria/text — não alterar state nem recriar gráficos
+        try {
+          if (window.btcChart && typeof window.btcChart.resize === 'function')
+            requestAnimationFrame(() => window.btcChart.resize());
+          if (window.liveBtcChart && typeof window.liveBtcChart.resize === 'function')
+            requestAnimationFrame(() => window.liveBtcChart.resize());
+        } catch (e) {
+          /* noop */
+        }
+      });
+      // inicializar com is-expanded presente no HTML
+    } else {
+      // fallback para ids históricos (não remover para compat)
+      const chartSection = document.getElementById('chartSection');
+      const chartExpandBtn = document.getElementById('chartExpandBtn');
+      if (chartSection && chartExpandBtn) {
+        chartExpandBtn.addEventListener('click', () => {
+          const expanded = chartSection.classList.toggle('expanded');
+          chartExpandBtn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+          chartExpandBtn.textContent = expanded ? 'Recolher' : 'Expandir';
           try {
-            if (window.btcChart && typeof window.btcChart.resize === 'function') requestAnimationFrame(() => window.btcChart.resize());
-            if (window.liveBtcChart && typeof window.liveBtcChart.resize === 'function') requestAnimationFrame(() => window.liveBtcChart.resize());
-          } catch (e) { /* noop */ }
+            if (window.btcChart && typeof window.btcChart.resize === 'function')
+              requestAnimationFrame(() => window.btcChart.resize());
+          } catch (e) {}
         });
-        // inicializar com is-expanded presente no HTML
-      } else {
-        // fallback para ids históricos (não remover para compat)
-        const chartSection = document.getElementById('chartSection');
-        const chartExpandBtn = document.getElementById('chartExpandBtn');
-        if (chartSection && chartExpandBtn) {
-          chartExpandBtn.addEventListener('click', () => {
-            const expanded = chartSection.classList.toggle('expanded');
-            chartExpandBtn.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-            chartExpandBtn.textContent = expanded ? 'Recolher' : 'Expandir';
-            try { if (window.btcChart && typeof window.btcChart.resize === 'function') requestAnimationFrame(() => window.btcChart.resize()); } catch (e) {}
-          });
+      }
+    }
+  })();
+
+  // Carregar preço atual silenciosamente ao iniciar e preencher #tx-price se vazio
+  (async function prefillCurrentPriceAtBoot() {
+    try {
+      const priceEl = document.getElementById('tx-price');
+      if (!priceEl) return;
+      // Se já existe valor no campo, não sobrescrever
+      if (priceEl.value && priceEl.value.trim() !== '') return;
+      const vs = (document.getElementById('vsCurrency')?.value || 'usd').toLowerCase();
+      const p = await fetchLivePrice(vs);
+      if (p && Number.isFinite(p.price)) {
+        priceEl.value = Number(p.price).toFixed(2);
+      }
+    } catch (e) {
+      console.warn('prefillCurrentPriceAtBoot failed', e);
+    }
+  })();
+
+  // Bind 'Buscar preço do dia' button (preencher #tx-price usando CoinGecko)
+  (function bindFetchPriceBtn() {
+    const btn = document.getElementById('fetchPriceBtn');
+    const dateInput = document.getElementById('tx-date');
+    const priceInput = document.getElementById('tx-price');
+    if (!btn || !dateInput || !priceInput) return;
+    btn.addEventListener('click', async () => {
+      // Mesmo comportamento funcional, mas silencioso: não exibir mensagens.
+      let dateStr = dateInput.value;
+      if (!dateStr) {
+        const d = new Date();
+        dateStr = d.toISOString().slice(0, 10); // yyyy-mm-dd
+        try {
+          dateInput.value = dateStr;
+        } catch (e) {
+          /* ignore */
         }
       }
-    })();
-
-    // Carregar preço atual silenciosamente ao iniciar e preencher #tx-price se vazio
-    (async function prefillCurrentPriceAtBoot() {
       try {
-        const priceEl = document.getElementById('tx-price');
-        if (!priceEl) return;
-        // Se já existe valor no campo, não sobrescrever
-        if (priceEl.value && priceEl.value.trim() !== '') return;
-        const vs = (document.getElementById('vsCurrency')?.value || 'usd').toLowerCase();
-        const p = await fetchLivePrice(vs);
-        if (p && Number.isFinite(p.price)) {
-          priceEl.value = Number(p.price).toFixed(2);
+        btn.disabled = true;
+        const p = await fetchHistoricalPriceForDate(dateStr);
+        if (p && Number.isFinite(p)) {
+          priceInput.value = Number(p).toFixed(2);
+        } else {
+          console.warn('Não foi possível obter o preço para essa data.');
         }
-      } catch (e) { console.warn('prefillCurrentPriceAtBoot failed', e); }
-    })();
-
-    // Bind 'Buscar preço do dia' button (preencher #tx-price usando CoinGecko)
-    (function bindFetchPriceBtn() {
-      const btn = document.getElementById('fetchPriceBtn');
-      const dateInput = document.getElementById('tx-date');
-      const priceInput = document.getElementById('tx-price');
-      if (!btn || !dateInput || !priceInput) return;
-      btn.addEventListener('click', async () => {
-        // Mesmo comportamento funcional, mas silencioso: não exibir mensagens.
-        let dateStr = dateInput.value;
-        if (!dateStr) {
-          const d = new Date();
-          dateStr = d.toISOString().slice(0, 10); // yyyy-mm-dd
-          try { dateInput.value = dateStr; } catch (e) { /* ignore */ }
-        }
-        try {
-          btn.disabled = true;
-          const p = await fetchHistoricalPriceForDate(dateStr);
-          if (p && Number.isFinite(p)) {
-            priceInput.value = Number(p).toFixed(2);
-          } else {
-            console.warn('Não foi possível obter o preço para essa data.');
-          }
-        } catch (e) {
-          console.error('Erro ao buscar preço histórico', e);
-        } finally { btn.disabled = false; }
-      });
-    })();
+      } catch (e) {
+        console.error('Erro ao buscar preço histórico', e);
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  })();
 }
 
 document.addEventListener('DOMContentLoaded', boot);
@@ -2463,35 +3125,70 @@ document.addEventListener('DOMContentLoaded', boot);
 // Pegue preços históricos (CoinGecko) para BTC vs currency em dias
 async function fetchPrices(rangeOrDays = 90, vsOverride) {
   const vs = (vsOverride || resolvedVsCurrencyLower() || 'usd').toLowerCase();
-  const usingRange = rangeOrDays && typeof rangeOrDays === 'object' && Number.isFinite(rangeOrDays.min) && Number.isFinite(rangeOrDays.max);
-  const hideLoading = showLoadingOverlay(usingRange ? 'A carregar preços históricos do período selecionado…' : 'A carregar preços históricos…');
+  const usingRange =
+    rangeOrDays &&
+    typeof rangeOrDays === 'object' &&
+    Number.isFinite(rangeOrDays.min) &&
+    Number.isFinite(rangeOrDays.max);
+  const hideLoading = showLoadingOverlay(
+    usingRange
+      ? 'A carregar preços históricos do período selecionado…'
+      : 'A carregar preços históricos…'
+  );
   try {
-    let endpoint = '';
-    if (usingRange) {
-      const fromSec = Math.floor(rangeOrDays.min / 1000);
-      const toSec = Math.floor(rangeOrDays.max / 1000);
-      endpoint = `https://api.coingecko.com/api/v3/coins/bitcoin/market_chart/range?vs_currency=${vs}&from=${fromSec}&to=${toSec}`;
-    } else {
-      const days = typeof rangeOrDays === 'number' && rangeOrDays > 0 ? rangeOrDays : 90;
-      endpoint = `https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=${vs}&days=${days}`;
+    let arr = [];
+    let source = 'coingecko';
+    try {
+      arr = await fetchHistoricalPricesFromCoinGecko(rangeOrDays, vs);
+    } catch (coinGeckoError) {
+      const primaryIssue = normalizeRemoteFetchError('CoinGecko historical prices', coinGeckoError);
+      console.warn('CoinGecko historical prices failed, trying CryptoCompare', primaryIssue);
+      try {
+        arr = await fetchHistoricalPricesFromCryptoCompare(rangeOrDays, vs);
+        source = 'cryptocompare';
+      } catch (cryptoCompareError) {
+        throw createRemoteFetchError(
+          'Historical price pipeline',
+          'unavailable',
+          'Historical price pipeline failed',
+          {
+            primaryIssue,
+            fallbackIssue: normalizeRemoteFetchError(
+              'CryptoCompare historical prices',
+              cryptoCompareError
+            ),
+          }
+        );
+      }
     }
-    const res = await fetch(endpoint);
-    if (!res.ok) throw new Error('Erro ao buscar preços');
-    const json = await res.json();
-    // json.prices => [ [timestamp, price], ... ]
-    const arr = (json.prices || []).map((p) => ({ t: p[0], p: p[1] }));
-    // guardar temporariamente no state
+    if (!Array.isArray(arr) || arr.length === 0) {
+      throw createRemoteFetchError(
+        source === 'cryptocompare'
+          ? 'CryptoCompare historical prices'
+          : 'CoinGecko historical prices',
+        'empty_series',
+        'Historical provider returned an empty series'
+      );
+    }
     state.prices = arr;
     priceSeriesMeta = usingRange
-      ? { range: cloneRange(rangeOrDays), vs }
-      : { range: null, vs, days: typeof rangeOrDays === 'number' ? rangeOrDays : null };
+      ? { range: cloneRange(rangeOrDays), vs, source }
+      : { range: null, vs, days: typeof rangeOrDays === 'number' ? rangeOrDays : null, source };
     _pricesFetchFailed = false;
+    lastPriceFetchIssue = null;
     return arr;
   } catch (err) {
-    console.error('fetchPrices error', err);
-    showMessage('Erro ao obter preços históricos.', 'warn');
+    const issue =
+      err?.primaryIssue || err?.fallbackIssue
+        ? err
+        : normalizeRemoteFetchError('Historical price pipeline', err);
+    lastPriceFetchIssue = issue;
+    state.prices = [];
+    priceSeriesMeta = null;
+    console.error('fetchPrices error', issue);
+    showMessage(resolvePriceFetchIssue(issue, vs).title, 'warn');
     _pricesFetchFailed = true;
-    return [];
+    throw issue;
   } finally {
     hideLoading();
   }
@@ -2500,15 +3197,18 @@ async function fetchPrices(rangeOrDays = 90, vsOverride) {
 // Fetch OHLC (candles) via CoinGecko
 async function fetchOHLC(days = 90, vsOverride) {
   const vs = (vsOverride || resolvedVsCurrencyLower() || 'usd').toLowerCase();
-  const normalizedDays = typeof days === 'string' ? days : Math.max(1, Math.min(365, Math.floor(days)));
+  const normalizedDays =
+    typeof days === 'string' ? days : Math.max(1, Math.min(365, Math.floor(days)));
   const label = normalizedDays === 'max' ? 'histórico completo' : `${normalizedDays} dias`;
   const hideLoading = showLoadingOverlay(`A carregar velas (OHLC) — ${label}…`);
   try {
-    const res = await fetch(`https://api.coingecko.com/api/v3/coins/bitcoin/ohlc?vs_currency=${vs}&days=${normalizedDays}`);
+    const res = await fetch(
+      `https://api.coingecko.com/api/v3/coins/bitcoin/ohlc?vs_currency=${vs}&days=${normalizedDays}`
+    );
     if (!res.ok) throw new Error('Erro ao buscar OHLC');
     const json = await res.json();
     // json: array of [timestamp, open, high, low, close]
-    state.ohlc = (json || []).map(d => ({ t: d[0], o: d[1], h: d[2], l: d[3], c: d[4] }));
+    state.ohlc = (json || []).map((d) => ({ t: d[0], o: d[1], h: d[2], l: d[3], c: d[4] }));
     ohlcSeriesMeta = { days: normalizedDays, vs };
     return state.ohlc;
   } catch (err) {
@@ -2546,6 +3246,7 @@ async function fetchHistoricalPriceForDate(dateStr, vs) {
 }
 
 let _chart = null;
+let priceService = null;
 // Flags para evitar loops de fetch/redraw
 let _fetchingPrices = false;
 let _pricesFetchFailed = false;
@@ -2559,24 +3260,64 @@ function renderChart(visibleTxs = getVisibleTxs()) {
   const vs = resolvedVsCurrencyLower();
   if (shouldRefreshPriceSeries(fetchRange, vs)) {
     schedulePriceSeriesFetch(fetchRange, vs, () => renderChart());
+    if (
+      _pricesFetchFailed &&
+      lastFailedPriceMeta &&
+      lastFailedPriceMeta.vs === vs &&
+      rangesRoughlyMatch(lastFailedPriceMeta.range, fetchRange)
+    ) {
+      destroyMainChartInstance();
+      const issue = resolvePriceFetchIssue(lastPriceFetchIssue, vs);
+      setChartEmptyState(issue.title, issue.detail);
+    } else if (!Array.isArray(state.prices) || state.prices.length === 0) {
+      setChartEmptyState(
+        'A carregar série histórica BTC…',
+        `A pedir BTC/${vs.toUpperCase()} ao provedor de preços.`
+      );
+    }
     return;
   }
   if (getChartMode() === 'candles' && shouldRefreshOhlc(fetchRange, vs)) {
     scheduleOhlcFetch(fetchRange, vs, () => renderChart());
     return;
   }
-  const palette = getChartPalette();
   const series = buildChartSeries(visibleTxs);
-  const cfg = buildChartConfig(series, palette, {
+  const cfg = buildChartConfig(series, {
     includeCandles: getChartMode() === 'candles',
     allowAnnotation: true,
-    addAverageDataset: true
+    addAverageDataset: true,
   });
+  const priceDataset = getPrimaryPriceDataset(cfg);
+  const hasPriceSeries = Array.isArray(priceDataset?.data) && priceDataset.data.length > 0;
+  if (!hasPriceSeries) {
+    destroyMainChartInstance();
+    const issue = resolvePriceFetchIssue(lastPriceFetchIssue, vs);
+    setChartEmptyState(issue.title, issue.detail);
+    return;
+  }
 
-  if (_chart) try { _chart.destroy(); } catch (e) {}
+  clearChartEmptyState();
+  destroyMainChartInstance();
   _chart = new Chart(canvas.getContext('2d'), cfg);
-  try { window.btcChart = _chart; } catch (e) { /* ignore in strict CSP env */ }
-  try { requestAnimationFrame(() => { if (_chart && typeof _chart.resize === 'function') _chart.resize(); }); } catch (e) { /* noop */ }
+  try {
+    window.btcChart = _chart;
+  } catch (e) {
+    /* ignore in strict CSP env */
+  }
+  // Clique nos pontos do dataset "Entradas" (já filtrado por series.chartTxs)
+  bindChartPins({
+    chart: _chart,
+    getTxById: (id) => state.txs.find((tx) => tx.id === id),
+    getCurrentPrice: () => priceService?.getCurrentPrice(state.vs || 'usd') ?? null,
+    getCurrency: () => (state.vs || 'usd').toUpperCase(),
+  });
+  try {
+    requestAnimationFrame(() => {
+      if (_chart && typeof _chart.resize === 'function') _chart.resize();
+    });
+  } catch (e) {
+    /* noop */
+  }
 
   const filtersActive = getActiveFiltersCount() > 0;
   const vsLabel = (document.getElementById('vsCurrency')?.value || state.vs || 'USD').toUpperCase();
@@ -2588,33 +3329,45 @@ function renderChart(visibleTxs = getVisibleTxs()) {
     filtersActive,
     avgPrice: series.avgPrice,
     currentPrice: series.currentPrice,
-    vsCurrency: vsLabel
+    vsCurrency: vsLabel,
   };
   updateLegend(series.points, chartCounts);
 }
 
-// Ensure months are rendered when data changes
-function renderAll() {
-  hydrateYearOptions();
-  const visible = getVisibleTxs();
+// Atualiza tabela + stats sem recriar o gráfico
+// currentPriceOverride: preço direto do refreshLivePrice (sem chamada extra à API)
+function renderTableAndStats(visibleTxs = getVisibleTxs(), currentPriceOverride) {
+  const currentPrice =
+    currentPriceOverride != null
+      ? currentPriceOverride
+      : (priceService?.getCurrentPrice(state.vs || 'usd') ?? null);
   renderTable({
-    list: visible,
+    list: visibleTxs,
     totalCount: Array.isArray(state.txs) ? state.txs.length : 0,
     activeFiltersCount: getActiveFiltersCount(),
+    currentPrice,
+    currency: (state.vs || 'usd').toUpperCase(),
     createTxStatusBadge,
     fmtInt,
-    fmtPrice: fmtBRL
+    fmtPrice: fmtBRL,
   });
   renderStats({
-    list: visible,
+    list: visibleTxs,
     totalCount: Array.isArray(state.txs) ? state.txs.length : 0,
     getLatestMarketPrice,
     currentFiatCurrency,
     fmtCurrency,
     fmtSignedCurrency,
     fmtPercent,
-    fmtInt
+    fmtInt,
   });
+}
+
+// Ensure months are rendered when data changes
+function renderAll() {
+  hydrateYearOptions();
+  const visible = getVisibleTxs();
+  renderTableAndStats(visible);
   renderMonths(visible);
   renderChart(visible);
   renderAudit();
@@ -2623,16 +3376,16 @@ function renderAll() {
     totalCount: (state.txs || []).length,
     activeCount: getActiveFiltersCount(),
     sort: filterState.sort,
-    describeSortLabel
+    describeSortLabel,
   });
 }
 
 function updateLegend(points = [], stats = {}) {
   const container = document.getElementById('chartLegend');
   if (!container) return;
-  const pos = points.filter(p => p.plPct > 0).length;
-  const neg = points.filter(p => p.plPct < 0).length;
-  const neu = points.filter(p => p.plPct === 0).length;
+  const pos = points.filter((p) => p.plPct > 0).length;
+  const neg = points.filter((p) => p.plPct < 0).length;
+  const neu = points.filter((p) => p.plPct === 0).length;
   while (container.firstChild) container.removeChild(container.firstChild);
 
   const addItem = (label, count, colorVar) => {
@@ -2683,7 +3436,8 @@ function updateLegend(points = [], stats = {}) {
 
 // ResizeObserver: observa mudanças no container do gráfico e força resize nos charts
 try {
-  const chartContainer = () => document.getElementById('chartContainer') || document.querySelector('.chart-body');
+  const chartContainer = () =>
+    document.getElementById('chartContainer') || document.querySelector('.chart-body');
   const setupRO = () => {
     const el = chartContainer();
     if (!el || typeof ResizeObserver === 'undefined') return;
@@ -2693,24 +3447,36 @@ try {
       if (_roTimer) clearTimeout(_roTimer);
       _roTimer = setTimeout(() => {
         try {
-          if (window.btcChart && typeof window.btcChart.resize === 'function') window.btcChart.resize();
-          if (window.liveBtcChart && typeof window.liveBtcChart.resize === 'function') window.liveBtcChart.resize();
-          if (glassChartInstance && typeof glassChartInstance.resize === 'function') glassChartInstance.resize();
-        } catch (e) { /* noop */ }
+          if (window.btcChart && typeof window.btcChart.resize === 'function')
+            window.btcChart.resize();
+          if (window.liveBtcChart && typeof window.liveBtcChart.resize === 'function')
+            window.liveBtcChart.resize();
+          if (glassChartInstance && typeof glassChartInstance.resize === 'function')
+            glassChartInstance.resize();
+        } catch (e) {
+          /* noop */
+        }
       }, 100);
     };
     const ro = new ResizeObserver(scheduleResize);
     ro.observe(el);
   };
   // aguardar DOM ready se necessário
-  if (document.readyState === 'complete' || document.readyState === 'interactive') setupRO(); else document.addEventListener('DOMContentLoaded', setupRO);
-} catch (e) { /* Ignore if environment lacks ResizeObserver */ }
+  if (document.readyState === 'complete' || document.readyState === 'interactive') setupRO();
+  else document.addEventListener('DOMContentLoaded', setupRO);
+} catch (e) {
+  /* Ignore if environment lacks ResizeObserver */
+}
 
 // atualizar gráfico quando controles mudarem
 document.addEventListener('change', async (e) => {
   if (e.target && e.target.id === 'vsCurrency') {
     state.vs = e.target.value;
-    await fetchPrices(90);
+    try {
+      await fetchPrices(expandRange(ensureChartRange()), state.vs);
+    } catch (error) {
+      console.warn('Currency switch price fetch failed', error);
+    }
     if (document.getElementById('chartMode')?.value === 'candles') await fetchOHLC(90);
     renderChart();
     const overlay = document.getElementById('chartGlassOverlay');
@@ -2733,30 +3499,10 @@ const LIVE_POLL_INTERVAL = 60 * 1000; // 60s
 let liveIntervalId = null;
 let _liveChart = null;
 
-// Fetch current price from CoinGecko (fallback to CoinDesk if needed)
+// Fetch current price with provider fallback suitable for browser runtime.
 async function fetchLivePrice(vs = 'usd') {
-  try {
-    const url = `https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=${vs}`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error('Coingecko fetch failed');
-    const json = await res.json();
-    const p = json?.bitcoin?.[vs];
-    if (!p) throw new Error('Invalid response');
-    return { price: Number(p), time: Date.now() };
-  } catch (err) {
-    console.warn('fetchLivePrice coingecko failed, trying coindesk', err);
-    try {
-      const r2 = await fetch('https://api.coindesk.com/v1/bpi/currentprice.json');
-      if (!r2.ok) throw new Error('CoinDesk failed');
-      const j2 = await r2.json();
-      const usd = j2?.bpi?.USD?.rate_float;
-      if (!usd) throw new Error('CoinDesk invalid');
-      return { price: Number(usd), time: Date.now() };
-    } catch (err2) {
-      console.error('Both live price fetches failed', err2);
-      throw err2;
-    }
-  }
+  const price = await fetchCurrentPriceValue(vs);
+  return { price, time: Date.now() };
 }
 
 function loadLiveCache() {
@@ -2764,14 +3510,18 @@ function loadLiveCache() {
     const parsed = storageLoadState(LIVE_LS_KEY, []);
     if (!Array.isArray(parsed)) return [];
     return parsed.slice(-LIVE_MAX_POINTS);
-  } catch (e) { return []; }
+  } catch (e) {
+    return [];
+  }
 }
 
 function saveLiveCache(arr) {
   try {
     const toSave = (arr || []).slice(-LIVE_MAX_POINTS);
     storageSaveState(toSave, LIVE_LS_KEY);
-  } catch (e) { console.warn('saveLiveCache error', e); }
+  } catch (e) {
+    console.warn('saveLiveCache error', e);
+  }
 }
 
 function pushLivePrice(point) {
@@ -2785,7 +3535,9 @@ function showLiveStatus(text, type = 'info') {
   const el = document.getElementById('liveChartStatus');
   if (!el) return;
   el.textContent = text;
-  if (type === 'warn') el.style.color = 'var(--warn)'; else if (type === 'danger') el.style.color = 'var(--danger)'; else el.style.color = 'var(--muted)';
+  if (type === 'warn') el.style.color = 'var(--warn)';
+  else if (type === 'danger') el.style.color = 'var(--danger)';
+  else el.style.color = 'var(--muted)';
 }
 
 function initLiveChart() {
@@ -2793,22 +3545,56 @@ function initLiveChart() {
   if (!canvas || typeof Chart === 'undefined') return;
   const ctx = canvas.getContext('2d');
   const cached = loadLiveCache();
-  const labels = cached.map(p => new Date(p.time));
-  const data = cached.map(p => p.price);
+  const labels = cached.map((p) => new Date(p.time));
+  const data = cached.map((p) => p.price);
   const cfg = {
     type: 'line',
-    data: { labels, datasets: [{ label: 'BTC (live)', data, borderColor: 'var(--accent)', backgroundColor: 'rgba(0,122,255,0.08)', tension: 0.2, pointRadius: 3 }] },
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'BTC (live)',
+          data,
+          borderColor: chartTokens.accent(),
+          backgroundColor: readToken('--color-interactive-accent-subtle'),
+          tension: 0.2,
+          pointRadius: 3,
+        },
+      ],
+    },
     options: {
-      responsive: true, maintainAspectRatio: false,
-      scales: { x: { type: 'time', time: { unit: 'minute' } }, y: { ticks: { callback: v => new Intl.NumberFormat('en-US', { style: 'currency', currency: (document.getElementById('vsCurrency')?.value || 'usd').toUpperCase() }).format(v) } } },
-      plugins: { legend: { display: false } }
-    }
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        x: { type: 'time', time: { unit: 'minute' } },
+        y: {
+          ticks: {
+            callback: (v) =>
+              new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: (document.getElementById('vsCurrency')?.value || 'usd').toUpperCase(),
+              }).format(v),
+          },
+        },
+      },
+      plugins: { legend: { display: false } },
+    },
   };
-  try { if (_liveChart) _liveChart.destroy(); } catch (e) {}
+  try {
+    if (_liveChart) _liveChart.destroy();
+  } catch (e) {}
   _liveChart = new Chart(ctx, cfg);
-  try { window.liveBtcChart = _liveChart; } catch (e) {}
+  try {
+    window.liveBtcChart = _liveChart;
+  } catch (e) {}
   // Garantir resize no próximo frame (mesma defesa usada para o gráfico principal)
-  try { requestAnimationFrame(() => { if (_liveChart && typeof _liveChart.resize === 'function') _liveChart.resize(); }); } catch (e) { /* noop */ }
+  try {
+    requestAnimationFrame(() => {
+      if (_liveChart && typeof _liveChart.resize === 'function') _liveChart.resize();
+    });
+  } catch (e) {
+    /* noop */
+  }
 }
 
 async function refreshLivePrice() {
@@ -2816,14 +3602,18 @@ async function refreshLivePrice() {
   try {
     const p = await fetchLivePrice(vs);
     const arr = pushLivePrice(p);
+    // atualizar P&L da tabela com o preço recém-obtido (sem chamada extra à API)
+    renderTableAndStats(undefined, p.price);
     // atualizar chart
     if (!_liveChart) initLiveChart();
-    const labels = arr.map(x => new Date(x.time));
-    const data = arr.map(x => x.price);
+    const labels = arr.map((x) => new Date(x.time));
+    const data = arr.map((x) => x.price);
     _liveChart.data.labels = labels;
     _liveChart.data.datasets[0].data = data;
     _liveChart.update('none');
-    showLiveStatus(`Última: ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: (vs || 'usd').toUpperCase() }).format(p.price)} • ${new Date(p.time).toLocaleTimeString()}`);
+    showLiveStatus(
+      `Última: ${new Intl.NumberFormat('pt-BR', { style: 'currency', currency: (vs || 'usd').toUpperCase() }).format(p.price)} • ${new Date(p.time).toLocaleTimeString()}`
+    );
   } catch (err) {
     const cached = loadLiveCache();
     if (cached.length) {
@@ -2842,7 +3632,12 @@ function startLivePolling() {
   liveIntervalId = setInterval(() => refreshLivePrice(), LIVE_POLL_INTERVAL);
 }
 
-function stopLivePolling() { if (liveIntervalId) { clearInterval(liveIntervalId); liveIntervalId = null; } }
+function stopLivePolling() {
+  if (liveIntervalId) {
+    clearInterval(liveIntervalId);
+    liveIntervalId = null;
+  }
+}
 
 function bindLiveToggle() {
   const section = document.getElementById('liveChartSection');
@@ -2851,14 +3646,23 @@ function bindLiveToggle() {
   btn.addEventListener('click', () => {
     const isCentered = section.classList.toggle('centered');
     if (isCentered) {
-      section.classList.remove('expanded'); section.classList.add('collapsed');
-      btn.textContent = '⬆ Expandir'; btn.setAttribute('aria-expanded', 'false');
+      section.classList.remove('expanded');
+      section.classList.add('collapsed');
+      btn.textContent = '⬆ Expandir';
+      btn.setAttribute('aria-expanded', 'false');
     } else {
-      section.classList.remove('collapsed'); section.classList.add('expanded');
-      btn.textContent = '⬇ Recolher gráfico'; btn.setAttribute('aria-expanded', 'true');
+      section.classList.remove('collapsed');
+      section.classList.add('expanded');
+      btn.textContent = '⬇ Recolher gráfico';
+      btn.setAttribute('aria-expanded', 'true');
     }
     // permitir transição antes de forçar resize
-    requestAnimationFrame(() => { try { if (window.liveBtcChart && typeof window.liveBtcChart.resize === 'function') window.liveBtcChart.resize(); } catch (e) {} });
+    requestAnimationFrame(() => {
+      try {
+        if (window.liveBtcChart && typeof window.liveBtcChart.resize === 'function')
+          window.liveBtcChart.resize();
+      } catch (e) {}
+    });
   });
 }
 
@@ -2871,6 +3675,10 @@ document.addEventListener('DOMContentLoaded', () => {
       console.info('Live chart está desativado via data-live-disabled');
       return;
     }
-    initLiveChart(); startLivePolling(); bindLiveToggle();
-  } catch (e) { console.warn('live chart init failed', e); }
+    initLiveChart();
+    startLivePolling();
+    bindLiveToggle();
+  } catch (e) {
+    console.warn('live chart init failed', e);
+  }
 });

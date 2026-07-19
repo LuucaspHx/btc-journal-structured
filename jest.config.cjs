@@ -7,6 +7,23 @@ module.exports = {
     '**/*.test.mjs',
     '**/*.spec.mjs'
   ],
+  testPathIgnorePatterns: [
+    '/node_modules/',
+    '/.claude/',
+    '/coverage/',
+    '/dist/',
+  ],
+  modulePathIgnorePatterns: [
+    '<rootDir>/.claude/',
+    '<rootDir>/coverage/',
+    '<rootDir>/dist/',
+  ],
+  watchPathIgnorePatterns: [
+    '/node_modules/',
+    '/.claude/',
+    '/coverage/',
+    '/dist/',
+  ],
   collectCoverageFrom: [
     'js/**/*.js',
     '!node_modules/**'

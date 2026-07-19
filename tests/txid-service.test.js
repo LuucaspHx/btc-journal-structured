@@ -72,4 +72,23 @@ describe('txid-service', () => {
     expect(resolveNetwork('bitcoin')).toBe('mainnet');
     expect(resolveNetwork('TB1-test')).toBe('testnet');
   });
+
+  test('retorna confirmedAt em formato YYYY-MM-DD quando confirmado', async () => {
+    const fetcher = async () => ({
+      ok: true,
+      json: async () => explorerPayload({ confirmed: true, time: 1710000000 })
+    });
+    const result = await validateTxidEntry(mockEntry(), { fetcher });
+    // 1710000000 * 1000 = Date → '2024-03-09'
+    expect(result.confirmedAt).toBe('2024-03-09');
+  });
+
+  test('confirmedAt é null quando não confirmado', async () => {
+    const fetcher = async () => ({
+      ok: true,
+      json: async () => explorerPayload({ confirmed: false })
+    });
+    const result = await validateTxidEntry(mockEntry(), { fetcher });
+    expect(result.confirmedAt).toBeNull();
+  });
 });
