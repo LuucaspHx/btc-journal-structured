@@ -2,6 +2,9 @@ import {
   buildPinDataset,
   buildPinModalData,
   buildTargetPriceAnnotation,
+  buildAverageDataset,
+  buildChartEntryPoint,
+  buildEntryDataset,
   computePointRadius,
   getPrimaryPriceDataset,
   MAX_POINT_RADIUS,
@@ -10,6 +13,13 @@ import {
 } from '../js/ui/chart/helpers.js';
 
 describe('ui/chart/helpers', () => {
+  const tokens = {
+    textMuted: () => 'muted',
+    warn: () => 'warn',
+    ok: () => 'ok',
+    danger: () => 'danger',
+    bgPage: () => 'page',
+  };
   const tx = {
     id: 'tx1',
     date: '2025-01-15',
@@ -78,6 +88,36 @@ describe('ui/chart/helpers', () => {
     expect(computePointRadius()).toBe(3);
     expect(computePointRadius(-1)).toBe(3);
     expect(computePointRadius(10 ** 20)).toBe(MAX_POINT_RADIUS);
+  });
+
+  test('buildChartEntryPoint preserva os dados usados pelo tooltip', () => {
+    expect(buildChartEntryPoint(tx, 100000)).toMatchObject({
+      y: 82000,
+      sats: 150000,
+      fiat: 80,
+      plPct: expect.closeTo(21.9512, 4),
+      id: 'tx1',
+      type: 'buy',
+    });
+    expect(buildChartEntryPoint({ ...tx, date: '' }, 100000)).toBeNull();
+  });
+
+  test('buildEntryDataset preserva raio, cor e forma dos marcadores', () => {
+    const dataset = buildEntryDataset([], tokens);
+
+    expect(dataset.pointRadius({ raw: { sats: 150000 } })).toBeGreaterThan(3);
+    expect(dataset.pointBackgroundColor({ raw: { plPct: 1 } })).toBe('ok');
+    expect(dataset.pointBackgroundColor({ raw: { plPct: -1 } })).toBe('danger');
+    expect(dataset.pointStyle({ raw: { type: 'sell' } })).toBe('triangle');
+    expect(dataset.pointBorderColor({ raw: {} })).toBe('page');
+  });
+
+  test('buildAverageDataset mantém a linha média e a cor do tema', () => {
+    expect(buildAverageDataset(3, 75000, tokens)).toMatchObject({
+      type: 'line',
+      data: [75000, 75000, 75000],
+      borderColor: 'warn',
+    });
   });
 
   test('sanitizeChartDataset remove pontos inválidos por tipo', () => {
