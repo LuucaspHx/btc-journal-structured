@@ -4,6 +4,7 @@ import {
   buildTargetPriceAnnotation,
   buildAverageDataset,
   buildChartEntryPoint,
+  buildChartOptions,
   buildEntryDataset,
   computePointRadius,
   getPrimaryPriceDataset,
@@ -19,6 +20,7 @@ describe('ui/chart/helpers', () => {
     ok: () => 'ok',
     danger: () => 'danger',
     bgPage: () => 'page',
+    chartGrid: () => 'grid',
   };
   const tx = {
     id: 'tx1',
@@ -118,6 +120,34 @@ describe('ui/chart/helpers', () => {
       data: [75000, 75000, 75000],
       borderColor: 'warn',
     });
+  });
+
+  test('buildChartOptions preserva escalas, tema e tooltips', () => {
+    const options = buildChartOptions({
+      range: { min: 10, max: 20 },
+      vsLabel: 'EUR',
+      compact: true,
+      formatCurrency: (value, currency) => `${currency}:${value}`,
+      formatInt: (value) => `int:${value}`,
+      formatPercent: (value) => `pct:${value}`,
+      tokens,
+    });
+
+    expect(options.scales.x).toMatchObject({ min: 10, max: 20 });
+    expect(options.scales.x.ticks.maxTicksLimit).toBe(6);
+    expect(options.plugins.legend.labels.color).toBe('muted');
+    expect(
+      options.plugins.tooltip.callbacks.label({
+        dataset: { type: 'scatter' },
+        raw: { y: 75000, sats: 123, type: 'sell', plPct: 2, note: 'teste' },
+      })
+    ).toEqual([
+      'Preço: EUR:75000',
+      'Sats: int:123',
+      'Tipo: Venda',
+      'P/L atual: pct:2',
+      'Nota: teste',
+    ]);
   });
 
   test('sanitizeChartDataset remove pontos inválidos por tipo', () => {

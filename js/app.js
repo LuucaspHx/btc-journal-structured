@@ -62,6 +62,7 @@ import {
   buildTargetPriceAnnotation,
   buildAverageDataset,
   buildChartEntryPoint,
+  buildChartOptions,
   buildEntryDataset,
   getPrimaryPriceDataset,
   sanitizeChartConfig,
@@ -2589,85 +2590,6 @@ const chartCrosshairPlugin = {
   },
 };
 
-function buildChartOptions(series, options = {}) {
-  const { avgPrice } = series;
-  const { min, max } = ensureChartRange();
-  const vsCurrency = options.vsLabel || currentFiatCurrency();
-  const formatCurrencyValue = (value) => fmtCurrency(value, vsCurrency);
-  const tooltipTitle = (items) => {
-    if (!items || !items.length) return '';
-    const raw = items[0];
-    const value = raw.parsed?.x ?? raw.label ?? raw.parsed;
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return '';
-    return date.toLocaleString('pt-BR', {
-      year: 'numeric',
-      month: 'short',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
-
-  return {
-    responsive: true,
-    maintainAspectRatio: false,
-    interaction: {
-      mode: 'nearest',
-      intersect: false,
-      axis: 'x',
-    },
-    scales: {
-      x: {
-        type: 'time',
-        time: { unit: 'month', displayFormats: { month: 'MMM yyyy' } },
-        min,
-        max,
-        ticks: {
-          color: chartTokens.textMuted(),
-          maxRotation: 0,
-          autoSkip: true,
-          maxTicksLimit: options.compact ? 6 : 12,
-        },
-        grid: { color: chartTokens.chartGrid() },
-      },
-      y: {
-        ticks: { color: chartTokens.textMuted() },
-        grid: { color: chartTokens.chartGrid() },
-      },
-    },
-    plugins: {
-      legend: { labels: { color: chartTokens.textMuted() } },
-      btcJournalCrosshair: {
-        color: chartTokens.textMuted(),
-        dash: [4, 4],
-        lineWidth: 1,
-      },
-      tooltip: {
-        callbacks: {
-          title: tooltipTitle,
-          label(context) {
-            const ds = context.dataset || {};
-            if (ds.type === 'scatter') {
-              const raw = context.raw || {};
-              const lines = [];
-              lines.push(`Preço: ${formatCurrencyValue(raw.y)}`);
-              lines.push(`Sats: ${fmtInt(raw.sats || 0)}`);
-              if (raw.exchange) lines.push(`Exchange: ${raw.exchange}`);
-              if (raw.type) lines.push(`Tipo: ${raw.type === 'sell' ? 'Venda' : 'Compra'}`);
-              if (Number.isFinite(raw.plPct)) lines.push(`P/L atual: ${fmtPercent(raw.plPct)}`);
-              if (raw.note) lines.push(`Nota: ${raw.note}`);
-              return lines;
-            }
-            const value = context.parsed?.y ?? context.formattedValue;
-            return `${context.dataset.label}: ${formatCurrencyValue(value)}`;
-          },
-        },
-      },
-    },
-  };
-}
-
 function buildChartConfig(series, options = {}) {
   const mode = getChartMode();
   const includeCandles = options.includeCandles ?? mode === 'candles';
@@ -2721,7 +2643,15 @@ function buildChartConfig(series, options = {}) {
   const cfg = {
     type: 'line',
     data: { labels: series.labels, datasets },
-    options: buildChartOptions(series, { ...options, vsLabel }),
+    options: buildChartOptions({
+      range: ensureChartRange(),
+      vsLabel,
+      compact: options.compact,
+      formatCurrency: fmtCurrency,
+      formatInt: fmtInt,
+      formatPercent: fmtPercent,
+      tokens: chartTokens,
+    }),
     plugins: [chartCrosshairPlugin],
   };
 
