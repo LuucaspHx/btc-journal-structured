@@ -173,8 +173,8 @@ Invariantes praticos:
 
 ## Testes existentes
 Suite local validada em 2026-07-19 com `npm test -- --runInBand`:
-- 16 suites ok
-- 100 testes ok
+- 17 suites ok
+- 104 testes ok
 
 Cobertura funcional atual:
 - `tests/core-schema.test.js`: shape canonico e defaults
@@ -190,6 +190,7 @@ Cobertura funcional atual:
 - `tests/goals-controller.test.js`: controlador de metas
 - `tests/price-service.test.js`: polling e cache de preco por moeda
 - `tests/http-service.test.js`: timeout, abort e propagacao de respostas HTTP
+- `tests/retry-policy.test.js`: backoff exponencial, cooldown e reinicio por request
 - `tests/ui-chart-helpers.test.js`: dataset/detalhe dos alfinetes e annotation de target price
 - `tests/ui-table-helpers.test.js`: formatacao do P&L por entrada
 - `tests/ui-audit-helpers.test.js`: helpers do painel de auditoria
@@ -201,7 +202,7 @@ Observacao:
 - `js/app.js` esta grande demais e mistura dominio, DOM, fetch, persistencia e renderizacao. E o principal ponto de manutencao dificil.
 - `import-sanitizer.js` ainda opera com shape antigo/minimo, e o runtime precisa reconciliar isso depois com `ensureCanonicalEntry()`.
 - Como tudo roda no browser, falhas de rede nas APIs externas afetam UX e podem parecer bugs locais.
-- O modo OHLC pode reagendar fetches rapidamente quando CoinGecko falha por rede/CORS, gerando repeticao de logs e toasts; precisa de backoff/deduplicacao antes de expandir o grafico de velas.
+- OHLC aplica backoff exponencial por periodo/moeda, com fallback para a serie de preco durante o cooldown; manter esta politica ao alterar o modo de velas.
 - Persistencia apenas em `localStorage` significa risco de perda de dados se o usuario limpar o navegador sem exportar backup.
 - Migracoes precisam manter muito cuidado para nao sobrescrever estado atual sem backup.
 
@@ -244,12 +245,12 @@ Observacao:
 - Higiene de testes: Jest ignora worktrees e artefactos locais (`1b123f0`).
 - Seguranca runtime: SRI nos CDNs, navegacao sem script inline, fetch com timeout/abort e limites de importacao (`2551845`).
 - Target price line: target USD efemero, update live/canonico, guard de moeda e layout mobile validado em 375 px.
+- Estabilidade OHLC: falhas de CoinGecko entram em cooldown com backoff e deixam o grafico de preco como fallback.
 
 ## Prioridades atuais
-1. Corrigir o retry storm de OHLC com deduplicacao e backoff, preservando fallback e mensagens de erro.
-2. Preparar o lote CSP: inventariar/remover estilos inline antes de aplicar uma politica restritiva.
-3. Continuar a reducao de `js/app.js` sem misturar esse refactor com features pequenas.
-4. Selecionar o proximo incremento de produto apenas depois destes dois hardenings.
+1. Preparar o lote CSP: inventariar/remover estilos inline antes de aplicar uma politica restritiva.
+2. Continuar a reducao de `js/app.js` sem misturar esse refactor com features pequenas.
+3. Selecionar o proximo incremento de produto depois do lote CSP.
 
 Configuracao remota validada em 2026-07-19:
 - GitHub Pages usa build por Actions, HTTPS obrigatorio e publica apenas o `dist/` minimo.
@@ -273,7 +274,6 @@ Funcionalidades presentes no código (verificar com `git ls-files js/`):
 
 ## Próximo passo
 
-Proximo trabalho tecnico: **deduplicar e aplicar backoff ao fetch OHLC**.
+Proximo trabalho tecnico: **CSP em lote separado**, apos inventario dos estilos inline.
 
-Depois: **CSP em lote separado**, apenas apos inventario dos estilos inline. O proximo
-marco de produto ainda nao foi selecionado.
+O proximo marco de produto ainda nao foi selecionado.
