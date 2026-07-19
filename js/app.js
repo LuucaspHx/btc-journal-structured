@@ -57,6 +57,7 @@ import {
 import { createPriceService } from './services/price-service.js';
 import { fetchWithTimeout } from './services/http.js';
 import { bindChartPins } from './ui/chart/bind.js';
+import { buildTargetPriceAnnotation } from './ui/chart/helpers.js';
 import { chartTokens, readToken } from './ui/chart/tokens.js';
 import { bindSectionNavigation } from './ui/section-nav.js';
 
@@ -69,6 +70,8 @@ let loadingOverlayCounter = 0;
 let editingTxId = null;
 let pendingImportPayload = null;
 let editingGoalId = null;
+let targetPriceUsd = null;
+let syncTargetPriceCurrency = () => {};
 const goalsController = createGoalsController();
 goalsController.setGoalsState(state.goals);
 goalsController.subscribe((snapshot) => renderGoalsPanel(snapshot));
@@ -2822,6 +2825,13 @@ function buildChartConfig(series, options = {}) {
   datasets.push(buildEntryDataset(series.points));
 
   const useAnnotation = options.allowAnnotation && isAnnotationAvailable();
+  const targetAnnotation =
+    vsLabel === 'USD'
+      ? buildTargetPriceAnnotation(targetPriceUsd, {
+          color: chartTokens.warn(),
+          backgroundColor: chartTokens.bgSurface(),
+        })
+      : null;
   if (!useAnnotation && options.addAverageDataset && series.avgPrice > 0) {
     datasets.push(buildAverageDataset(series.labels.length, series.avgPrice));
   }
@@ -2833,31 +2843,93 @@ function buildChartConfig(series, options = {}) {
     plugins: [chartCrosshairPlugin],
   };
 
-  if (useAnnotation && series.avgPrice > 0) {
+  if (useAnnotation && (series.avgPrice > 0 || targetAnnotation)) {
     cfg.options.plugins = cfg.options.plugins || {};
-    cfg.options.plugins.annotation = {
-      annotations: {
-        avgLine: {
-          type: 'line',
-          yMin: series.avgPrice,
-          yMax: series.avgPrice,
-          borderColor: chartTokens.warn(),
-          borderWidth: 1,
-          borderDash: [6, 6],
-          label: {
-            enabled: true,
-            content: `PM ${fmtCurrency(series.avgPrice, vsLabel)}`,
-            position: 'end',
-            backgroundColor: chartTokens.bgSurface(),
-            color: chartTokens.warn(),
-            padding: 4,
-          },
+    const annotations = {};
+    if (series.avgPrice > 0) {
+      annotations.avgLine = {
+        type: 'line',
+        yMin: series.avgPrice,
+        yMax: series.avgPrice,
+        borderColor: chartTokens.warn(),
+        borderWidth: 1,
+        borderDash: [6, 6],
+        label: {
+          enabled: true,
+          content: `PM ${fmtCurrency(series.avgPrice, vsLabel)}`,
+          position: 'end',
+          backgroundColor: chartTokens.bgSurface(),
+          color: chartTokens.warn(),
+          padding: 4,
         },
-      },
+      };
+    }
+    if (targetAnnotation) annotations.targetPrice = targetAnnotation;
+    cfg.options.plugins.annotation = {
+      annotations,
     };
   }
 
   return sanitizeChartConfig(cfg);
+}
+
+function applyTargetAnnotation(chart) {
+  if (!chart || !isAnnotationAvailable()) return;
+
+  const plugins = (chart.options.plugins ||= {});
+  const annotationPlugin = (plugins.annotation ||= {});
+  const annotations =
+    annotationPlugin.annotations && typeof annotationPlugin.annotations === 'object'
+      ? annotationPlugin.annotations
+      : {};
+  const annotation =
+    resolvedVsCurrencyLower() === 'usd'
+      ? buildTargetPriceAnnotation(targetPriceUsd, {
+          color: chartTokens.warn(),
+          backgroundColor: chartTokens.bgSurface(),
+        })
+      : null;
+
+  if (annotation) annotations.targetPrice = annotation;
+  else delete annotations.targetPrice;
+  annotationPlugin.annotations = annotations;
+  chart.update('none');
+}
+
+function updateTargetAnnotation() {
+  applyTargetAnnotation(_chart);
+  if (glassChartInstance && glassChartInstance !== _chart) {
+    applyTargetAnnotation(glassChartInstance);
+  }
+}
+
+function bindTargetPrice() {
+  const input = document.getElementById('targetPriceInput');
+  const hint = document.getElementById('targetPriceCurrencyHint');
+  if (!input) return () => {};
+
+  function syncCurrencyGuard() {
+    const isUsd = resolvedVsCurrencyLower() === 'usd';
+    input.disabled = !isUsd;
+    if (hint) hint.hidden = isUsd;
+    if (!isUsd && (targetPriceUsd !== null || input.value !== '')) {
+      input.value = '';
+      targetPriceUsd = null;
+      updateTargetAnnotation();
+    }
+  }
+
+  if (input.dataset.targetPriceBound !== 'true') {
+    input.dataset.targetPriceBound = 'true';
+    input.addEventListener('input', () => {
+      const value = Number(input.value);
+      targetPriceUsd = Number.isFinite(value) && value > 0 ? value : null;
+      updateTargetAnnotation();
+    });
+  }
+
+  syncCurrencyGuard();
+  return syncCurrencyGuard;
 }
 
 function renderChartToCanvas(canvasId = 'btcChart', visibleTxs = getVisibleTxs()) {
@@ -3038,6 +3110,7 @@ function boot() {
     },
   });
   bindGoalControls();
+  syncTargetPriceCurrency = bindTargetPrice();
   hydrateYearOptions();
   renderAll();
 
@@ -3488,6 +3561,7 @@ try {
 document.addEventListener('change', async (e) => {
   if (e.target && e.target.id === 'vsCurrency') {
     state.vs = e.target.value;
+    syncTargetPriceCurrency();
     try {
       await fetchPrices(expandRange(ensureChartRange()), state.vs);
     } catch (error) {
