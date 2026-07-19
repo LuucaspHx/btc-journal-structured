@@ -174,7 +174,7 @@ Invariantes praticos:
 ## Testes existentes
 Suite local validada em 2026-07-19 com `npm test -- --runInBand`:
 - 17 suites ok
-- 114 testes ok
+- 117 testes ok
 
 Cobertura funcional atual:
 - `tests/core-schema.test.js`: shape canonico e defaults
@@ -247,7 +247,7 @@ Observacao:
 - CSP base: scripts, fontes, rede e objetos restritos a origens explicitamente usadas; estilos inline permanecem como excecao temporaria.
 - Target price line: target USD efemero, update live/canonico, guard de moeda e layout mobile validado em 375 px.
 - Estabilidade OHLC: falhas de CoinGecko entram em cooldown com backoff e deixam o grafico de preco como fallback.
-- Refactor de grafico: helpers puros de configuracao, datasets e opcoes foram extraidos para `js/ui/chart/helpers.js`; o plugin crosshair vive em `js/ui/chart/crosshair.js`.
+- Refactor de grafico: helpers, datasets e opcoes vivem em `js/ui/chart/helpers.js`; a composicao em `js/ui/chart/config.js`; o crosshair em `js/ui/chart/crosshair.js`.
 
 ## Prioridades atuais
 1. Continuar a reducao de `js/app.js` sem misturar esse refactor com features pequenas.

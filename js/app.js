@@ -58,15 +58,12 @@ import { createPriceService } from './services/price-service.js';
 import { fetchWithTimeout } from './services/http.js';
 import { isRetryCoolingDown, recordRetryFailure } from './services/retry-policy.js';
 import { bindChartPins } from './ui/chart/bind.js';
+import { buildChartConfig as createChartConfig } from './ui/chart/config.js';
 import { createCrosshairPlugin } from './ui/chart/crosshair.js';
 import {
-  buildTargetPriceAnnotation,
-  buildAverageDataset,
   buildChartEntryPoint,
-  buildChartOptions,
-  buildEntryDataset,
+  buildTargetPriceAnnotation,
   getPrimaryPriceDataset,
-  sanitizeChartConfig,
 } from './ui/chart/helpers.js';
 import { chartTokens, readToken } from './ui/chart/tokens.js';
 import { bindSectionNavigation } from './ui/section-nav.js';
@@ -2540,98 +2537,23 @@ function isAnnotationAvailable() {
 const chartCrosshairPlugin = createCrosshairPlugin(chartTokens);
 
 function buildChartConfig(series, options = {}) {
-  const mode = getChartMode();
-  const includeCandles = options.includeCandles ?? mode === 'candles';
-  const datasets = [];
-  if (includeCandles && Array.isArray(state.ohlc) && state.ohlc.length > 0) {
-    const candData = state.ohlc.map((d) => ({ x: d.t, o: d.o, h: d.h, l: d.l, c: d.c }));
-    datasets.push({
-      label: 'OHLC',
-      type: 'candlestick',
-      data: candData,
-      color: { up: chartTokens.ok(), down: chartTokens.danger() },
-      order: 0,
-    });
-  }
   const vsLabel = (document.getElementById('vsCurrency')?.value || state.vs || 'USD').toUpperCase();
-  const pricePoints = series.labels
-    .map((t, i) => ({ x: t, y: series.priceData[i] }))
-    .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
-  datasets.push({
-    label: `BTC/${vsLabel}`,
-    data: pricePoints,
-    parsing: false,
-    borderWidth: 1.5,
-    borderColor: chartTokens.accent(),
-    backgroundColor: 'transparent' /* intentional: no fill under price line */,
-    pointRadius(context) {
-      return context.active ? 3 : 0;
-    },
-    pointHoverRadius: 4,
-    pointHitRadius: 10,
-    pointBackgroundColor: chartTokens.accent(),
-    pointBorderColor: chartTokens.bgSurface(),
-    pointBorderWidth: 1,
-    tension: 0.2,
-    order: 1,
+  return createChartConfig({
+    series,
+    ohlc: state.ohlc,
+    includeCandles: options.includeCandles ?? getChartMode() === 'candles',
+    useAnnotation: options.allowAnnotation && isAnnotationAvailable(),
+    addAverageDataset: options.addAverageDataset,
+    compact: options.compact,
+    range: ensureChartRange(),
+    vsLabel,
+    targetPriceUsd,
+    tokens: chartTokens,
+    formatCurrency: fmtCurrency,
+    formatInt: fmtInt,
+    formatPercent: fmtPercent,
+    crosshairPlugin: chartCrosshairPlugin,
   });
-  datasets.push(buildEntryDataset(series.points, chartTokens));
-
-  const useAnnotation = options.allowAnnotation && isAnnotationAvailable();
-  const targetAnnotation =
-    vsLabel === 'USD'
-      ? buildTargetPriceAnnotation(targetPriceUsd, {
-          color: chartTokens.warn(),
-          backgroundColor: chartTokens.bgSurface(),
-        })
-      : null;
-  if (!useAnnotation && options.addAverageDataset && series.avgPrice > 0) {
-    datasets.push(buildAverageDataset(series.labels.length, series.avgPrice, chartTokens));
-  }
-
-  const cfg = {
-    type: 'line',
-    data: { labels: series.labels, datasets },
-    options: buildChartOptions({
-      range: ensureChartRange(),
-      vsLabel,
-      compact: options.compact,
-      formatCurrency: fmtCurrency,
-      formatInt: fmtInt,
-      formatPercent: fmtPercent,
-      tokens: chartTokens,
-    }),
-    plugins: [chartCrosshairPlugin],
-  };
-
-  if (useAnnotation && (series.avgPrice > 0 || targetAnnotation)) {
-    cfg.options.plugins = cfg.options.plugins || {};
-    const annotations = {};
-    if (series.avgPrice > 0) {
-      annotations.avgLine = {
-        type: 'line',
-        yMin: series.avgPrice,
-        yMax: series.avgPrice,
-        borderColor: chartTokens.warn(),
-        borderWidth: 1,
-        borderDash: [6, 6],
-        label: {
-          enabled: true,
-          content: `PM ${fmtCurrency(series.avgPrice, vsLabel)}`,
-          position: 'end',
-          backgroundColor: chartTokens.bgSurface(),
-          color: chartTokens.warn(),
-          padding: 4,
-        },
-      };
-    }
-    if (targetAnnotation) annotations.targetPrice = targetAnnotation;
-    cfg.options.plugins.annotation = {
-      annotations,
-    };
-  }
-
-  return sanitizeChartConfig(cfg);
 }
 
 function applyTargetAnnotation(chart) {
