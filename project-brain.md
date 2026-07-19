@@ -249,8 +249,8 @@ Observacao:
 - Estabilidade OHLC: falhas de CoinGecko entram em cooldown com backoff e deixam o grafico de preco como fallback.
 
 ## Prioridades atuais
-1. Migrar os estilos inline restantes para fechar a excecao `style-src 'unsafe-inline'` da CSP.
-2. Continuar a reducao de `js/app.js` sem misturar esse refactor com features pequenas.
+1. Continuar a reducao de `js/app.js` sem misturar esse refactor com features pequenas.
+2. Migrar os estilos inline restantes para fechar a excecao `style-src 'unsafe-inline'` da CSP.
 3. Selecionar o proximo incremento de produto depois do trabalho de hardening/refactor.
 
 Configuracao remota validada em 2026-07-19:
@@ -275,6 +275,6 @@ Funcionalidades presentes no código (verificar com `git ls-files js/`):
 
 ## Próximo passo
 
-Proximo trabalho tecnico: **CSP estrita**, migrando os atributos `style` e os estilos dinamicos que ainda exigem `style-src 'unsafe-inline'`.
+Proximo trabalho tecnico: **reducao controlada de `js/app.js`**, por dominio e com helpers puros primeiro. A CSP estrita continua como proxima frente de hardening apos essa etapa.
 
 O proximo marco de produto ainda nao foi selecionado.
