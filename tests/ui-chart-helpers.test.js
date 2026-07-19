@@ -1,4 +1,8 @@
-import { buildPinDataset, buildPinModalData } from '../js/ui/chart/helpers.js';
+import {
+  buildPinDataset,
+  buildPinModalData,
+  buildTargetPriceAnnotation,
+} from '../js/ui/chart/helpers.js';
 
 describe('ui/chart/helpers', () => {
   const tx = {
@@ -30,5 +34,37 @@ describe('ui/chart/helpers', () => {
     expect(modal.costFiat).toBe(80);
     expect(modal.currentValue).toBeCloseTo(150);
     expect(modal.isProfit).toBe(true);
+  });
+
+  test.each([null, 0, -1000, Number.NaN, Number.POSITIVE_INFINITY])(
+    'buildTargetPriceAnnotation rejeita valor inválido: %s',
+    (value) => {
+      expect(buildTargetPriceAnnotation(value, { color: 'amber' })).toBeNull();
+    }
+  );
+
+  test('buildTargetPriceAnnotation cria linha horizontal formatada', () => {
+    const annotation = buildTargetPriceAnnotation(70000, { color: 'amber' });
+
+    expect(annotation).toMatchObject({
+      type: 'line',
+      scaleID: 'y',
+      value: 70000,
+      borderColor: 'amber',
+      borderWidth: 1,
+      borderDash: [6, 4],
+      label: {
+        display: true,
+        content: '▸ $70,000',
+        position: 'end',
+        color: 'amber',
+      },
+    });
+  });
+
+  test('buildTargetPriceAnnotation limita o label a duas casas decimais', () => {
+    const annotation = buildTargetPriceAnnotation(1000000.125, { color: 'amber' });
+
+    expect(annotation.label.content).toBe('▸ $1,000,000.13');
   });
 });
