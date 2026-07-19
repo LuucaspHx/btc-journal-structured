@@ -135,6 +135,90 @@ export function buildAverageDataset(length = 0, avgPrice = 0, tokens) {
   };
 }
 
+export function buildChartOptions({
+  range = {},
+  vsLabel = 'USD',
+  compact = false,
+  formatCurrency,
+  formatInt,
+  formatPercent,
+  tokens,
+} = {}) {
+  const formatCurrencyValue = (value) => formatCurrency(value, vsLabel);
+  const tooltipTitle = (items) => {
+    if (!items || !items.length) return '';
+    const raw = items[0];
+    const value = raw.parsed?.x ?? raw.label ?? raw.parsed;
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleString('pt-BR', {
+      year: 'numeric',
+      month: 'short',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: {
+      mode: 'nearest',
+      intersect: false,
+      axis: 'x',
+    },
+    scales: {
+      x: {
+        type: 'time',
+        time: { unit: 'month', displayFormats: { month: 'MMM yyyy' } },
+        min: range.min,
+        max: range.max,
+        ticks: {
+          color: tokens.textMuted(),
+          maxRotation: 0,
+          autoSkip: true,
+          maxTicksLimit: compact ? 6 : 12,
+        },
+        grid: { color: tokens.chartGrid() },
+      },
+      y: {
+        ticks: { color: tokens.textMuted() },
+        grid: { color: tokens.chartGrid() },
+      },
+    },
+    plugins: {
+      legend: { labels: { color: tokens.textMuted() } },
+      btcJournalCrosshair: {
+        color: tokens.textMuted(),
+        dash: [4, 4],
+        lineWidth: 1,
+      },
+      tooltip: {
+        callbacks: {
+          title: tooltipTitle,
+          label(context) {
+            const ds = context.dataset || {};
+            if (ds.type === 'scatter') {
+              const raw = context.raw || {};
+              const lines = [];
+              lines.push(`Preço: ${formatCurrencyValue(raw.y)}`);
+              lines.push(`Sats: ${formatInt(raw.sats || 0)}`);
+              if (raw.exchange) lines.push(`Exchange: ${raw.exchange}`);
+              if (raw.type) lines.push(`Tipo: ${raw.type === 'sell' ? 'Venda' : 'Compra'}`);
+              if (Number.isFinite(raw.plPct)) lines.push(`P/L atual: ${formatPercent(raw.plPct)}`);
+              if (raw.note) lines.push(`Nota: ${raw.note}`);
+              return lines;
+            }
+            const value = context.parsed?.y ?? context.formattedValue;
+            return `${context.dataset.label}: ${formatCurrencyValue(value)}`;
+          },
+        },
+      },
+    },
+  };
+}
+
 function isValidLineChartPoint(point) {
   if (Number.isFinite(point)) return true;
   return Boolean(point && Number.isFinite(point.x) && Number.isFinite(point.y));
