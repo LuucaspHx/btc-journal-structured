@@ -1,5 +1,3 @@
-/* global setInterval, clearInterval */
-
 const DEFAULT_INTERVAL_MS = 30_000;
 
 export function createPriceService({ fetcher, intervalMs = DEFAULT_INTERVAL_MS } = {}) {
