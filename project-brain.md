@@ -251,9 +251,10 @@ Observacao:
 3. Continuar a reducao de `js/app.js` sem misturar esse refactor com features pequenas.
 4. Selecionar o proximo incremento de produto apenas depois destes dois hardenings.
 
-Pendencias de configuracao remota (nao sao mudancas de codigo):
-- GitHub Pages ainda nao esta ativado para build por Actions; a API de Pages retorna 404.
-- A branch padrao remota ainda e `feat/nova-funcionalidade`; deve passar para `main` apos confirmacao explicita.
+Configuracao remota validada em 2026-07-19:
+- GitHub Pages usa build por Actions, HTTPS obrigatorio e publica apenas o `dist/` minimo.
+- A branch padrao remota e `main`.
+- Site publico: `https://luucasphx.github.io/btc-journal-structured/`.
 
 ## Estado atual
 
