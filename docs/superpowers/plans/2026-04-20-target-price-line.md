@@ -1,10 +1,13 @@
 # Target Price Line Implementation Plan
 
+> **STATUS: IMPLEMENTADO** em `codex/target-price-line`. Validado com 16 suites / 100 testes, audit de tokens e smoke desktop/mobile a 375 px.
+> **Decisoes as-built:** o helper puro vive em `js/ui/chart/helpers.js`; `targetPriceUsd` e estado efemero de modulo para nunca entrar em `saveState()`; `adjustScaleRange: false` impede que targets fora da serie distorcam o eixo Y.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Add a horizontal amber dashed line to the BTC price chart at a user-defined USD target, entered via an input in the chart card header, active only when the currency selector is set to USD.
 
-**Architecture:** Three-layer change — HTML markup (chart header restructure + input), CSS tokens-only styles, and three `app.js` additions: a pure annotation builder (testable), integration into `buildChartConfig()` (canonical re-render path), and an input handler (`bindTargetPrice()`) with a live mutation path (`updateTargetAnnotation()`). The live path only handles keystroke responsiveness; the canonical path ensures the annotation survives every chart rebuild.
+**Architecture:** Three-layer change — HTML markup (chart header restructure + input), CSS tokens-only styles, a pure annotation builder in `js/ui/chart/helpers.js`, integration into `buildChartConfig()` (canonical re-render path), and an input handler (`bindTargetPrice()`) with a live mutation path (`updateTargetAnnotation()`). The live path only handles keystroke responsiveness; the canonical path ensures the annotation survives every chart rebuild.
 
 **Tech Stack:** Vanilla JS (ES modules), Chart.js 4, `chartjs-plugin-annotation@3.0.1` (already loaded via CDN and registered in `app.js`), `chartTokens` from `js/ui/chart/tokens.js` (already imported in `app.js` at line 55).
 
@@ -16,7 +19,8 @@
 |------|--------|
 | `index.html` | Restructure chart card header (`~line 372`) into `.chart-head` + add input markup |
 | `css/style.css` | Append `.target-price-wrap`, `.target-price-input`, `.target-price-hint` styles |
-| `js/app.js` | `state.targetPriceUsd` (line 60), `buildTargetPriceAnnotation()`, `buildChartConfig()` annotation block refactor (~line 2825), `updateTargetAnnotation()`, `bindTargetPrice()`, wire into vsCurrency handler (~line 3473) and init |
+| `js/ui/chart/helpers.js` | Pure `buildTargetPriceAnnotation()` helper |
+| `js/app.js` | Ephemeral `targetPriceUsd`, `buildChartConfig()` annotation integration, `updateTargetAnnotation()`, `bindTargetPrice()`, currency guard and init wiring |
 
 ---
 
@@ -27,7 +31,7 @@
 
 The current chart card header is a plain `div` with inline `font-weight:800`. The spec requires a `.chart-head` wrapper (class already styled in `css/style.css` at line 130: `display:flex; justify-content:space-between; align-items:center`). Restructure it and add the input.
 
-- [ ] **Step 1: Locate the block to replace**
+- [x] **Step 1: Locate the block to replace**
 
 In `index.html`, find this block (around line 372):
 
@@ -37,7 +41,7 @@ In `index.html`, find this block (around line 372):
   <div id="chartContainer" style="height:320px; margin-top:8px;">
 ```
 
-- [ ] **Step 2: Replace with `.chart-head` structure**
+- [x] **Step 2: Replace with `.chart-head` structure**
 
 Replace the block above with:
 
@@ -63,11 +67,11 @@ Replace the block above with:
   <div id="chartContainer" style="height:320px; margin-top:8px;">
 ```
 
-- [ ] **Step 3: Verify HTML is valid — open in browser, confirm the chart card title still renders and no layout breaks**
+- [x] **Step 3: Verify HTML is valid — open in browser, confirm the chart card title still renders and no layout breaks**
 
 No automated test — visual check. The `.chart-head` flex row should show the title on the left and the input on the right.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add index.html
@@ -83,7 +87,7 @@ git commit -m "feat(html): chart-head structure + target price input markup"
 
 All styles must use design tokens. No hex literals — the pre-commit lint gate will block the commit if any `+` lines contain raw hex.
 
-- [ ] **Step 1: Append the styles to `css/style.css`**
+- [x] **Step 1: Append the styles to `css/style.css`**
 
 Add after the last existing rule (before or after the mobile block — keep mobile block last):
 
@@ -119,7 +123,7 @@ Add after the last existing rule (before or after the mobile block — keep mobi
 }
 ```
 
-- [ ] **Step 2: Run the lint gate locally to confirm no hex literals**
+- [x] **Step 2: Run the lint gate locally to confirm no hex literals**
 
 ```bash
 bash scripts/lint-tokens.sh
@@ -127,14 +131,14 @@ bash scripts/lint-tokens.sh
 
 Expected output: no errors (exit 0). If the script complains, check for stray `#` characters in the added lines.
 
-- [ ] **Step 3: Visual check — open the app in a browser**
+- [x] **Step 3: Visual check — open the app in a browser**
 
 Confirm:
 - Input renders in the chart header, right-aligned, 120px wide
 - Placeholder text "Target (USD)" visible
 - No layout break at desktop width
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add css/style.css
@@ -143,21 +147,21 @@ git commit -m "feat(css): target price input styles — tokens only"
 
 ---
 
-## Task 3: app.js — Pure annotation builder + unit test
+## Task 3: chart helper — Pure annotation builder + unit test
 
 **Files:**
-- Modify: `js/app.js` (add `buildTargetPriceAnnotation` near `buildChartConfig`, ~line 2775)
+- Modify: `js/ui/chart/helpers.js` (add `buildTargetPriceAnnotation`)
 - Modify: `tests/ui-chart-helpers.test.js` (append tests)
 
 Extract the annotation shape as a pure function so it is independently testable. `buildChartConfig` will call it in Task 4.
 
-- [ ] **Step 1: Write the failing tests first**
+- [x] **Step 1: Write the failing tests first**
 
 Open `tests/ui-chart-helpers.test.js`. At the end of the file, append:
 
 ```js
 // ── buildTargetPriceAnnotation ──────────────────────────
-import { buildTargetPriceAnnotation } from '../js/app.js';
+import { buildTargetPriceAnnotation } from '../js/ui/chart/helpers.js';
 
 describe('buildTargetPriceAnnotation', () => {
   test('returns null for null input', () => {
@@ -192,7 +196,7 @@ describe('buildTargetPriceAnnotation', () => {
 });
 ```
 
-- [ ] **Step 2: Run tests — confirm they fail**
+- [x] **Step 2: Run tests — confirm they fail**
 
 ```bash
 npm test -- --testPathPattern=ui-chart-helpers
@@ -200,9 +204,9 @@ npm test -- --testPathPattern=ui-chart-helpers
 
 Expected: `SyntaxError` or `export not found` — the function doesn't exist yet.
 
-- [ ] **Step 3: Add `buildTargetPriceAnnotation` to `app.js` and export it**
+- [x] **Step 3: Add and export `buildTargetPriceAnnotation` from `js/ui/chart/helpers.js`**
 
-In `js/app.js`, immediately before `function buildChartConfig` (~line 2775), insert:
+In `js/ui/chart/helpers.js`, add:
 
 ```js
 /**
@@ -234,7 +238,7 @@ export function buildTargetPriceAnnotation(valueUsd) {
 }
 ```
 
-- [ ] **Step 4: Run tests — confirm they pass**
+- [x] **Step 4: Run tests — confirm they pass**
 
 ```bash
 npm test -- --testPathPattern=ui-chart-helpers
@@ -242,7 +246,7 @@ npm test -- --testPathPattern=ui-chart-helpers
 
 Expected: all tests in `ui-chart-helpers.test.js` PASS. The new `buildTargetPriceAnnotation` tests should pass. Existing tests should be unaffected.
 
-- [ ] **Step 5: Run full suite to confirm no regressions**
+- [x] **Step 5: Run full suite to confirm no regressions**
 
 ```bash
 npm test
@@ -250,11 +254,11 @@ npm test
 
 Expected: all tests pass (same count as before plus the 5 new ones).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
-git add js/app.js tests/ui-chart-helpers.test.js
-git commit -m "feat(chart): buildTargetPriceAnnotation — pure fn + tests"
+git add js/ui/chart/helpers.js tests/ui-chart-helpers.test.js
+git commit -m "feat(chart): add tested target annotation builder"
 ```
 
 ---
@@ -266,7 +270,7 @@ git commit -m "feat(chart): buildTargetPriceAnnotation — pure fn + tests"
 
 This is the canonical path: every chart rebuild (filter change, year change, currency change, data refresh) goes through `buildChartConfig`. The target annotation must be included here so it is never lost on re-render.
 
-- [ ] **Step 1: Locate the existing annotation block**
+- [x] **Step 1: Locate the existing annotation block**
 
 In `js/app.js`, find this block inside `buildChartConfig` (lines ~2825–2847):
 
@@ -296,12 +300,12 @@ In `js/app.js`, find this block inside `buildChartConfig` (lines ~2825–2847):
   }
 ```
 
-- [ ] **Step 2: Replace with refactored block that includes both avgLine and targetPrice**
+- [x] **Step 2: Replace with refactored block that includes both avgLine and targetPrice**
 
 Replace the block above with:
 
 ```js
-  const targetAnn = buildTargetPriceAnnotation(state.targetPriceUsd);
+  const targetAnn = buildTargetPriceAnnotation(targetPriceUsd);
   const needsAnnotation = useAnnotation && (series.avgPrice > 0 || targetAnn !== null);
   if (needsAnnotation) {
     cfg.options.plugins = cfg.options.plugins || {};
@@ -329,7 +333,7 @@ Replace the block above with:
   }
 ```
 
-- [ ] **Step 3: Run full test suite**
+- [x] **Step 3: Run full test suite**
 
 ```bash
 npm test
@@ -337,11 +341,11 @@ npm test
 
 Expected: all tests pass (no regressions in `core-*` or `ui-*` tests).
 
-- [ ] **Step 4: Manual smoke test in browser**
+- [x] **Step 4: Manual smoke test in browser**
 
-Open the app. The avg line (PM) should still render as before. Set a target (e.g. 70000 — keyboard input will work after Task 5, but you can set `state.targetPriceUsd = 70000` in the browser console then call `renderChart()` to test the canonical path directly). Confirm the dashed amber line appears with `▸ $70,000` label.
+Open the app, enter a target such as `70000`, trigger a chart rebuild and confirm the dashed amber line remains visible with the `▸ $70,000` label.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add js/app.js
@@ -354,29 +358,23 @@ git commit -m "feat(chart): integrate targetPrice annotation in buildChartConfig
 
 **Files:**
 - Modify: `js/app.js`:
-  - line 60 — add `targetPriceUsd` to `state`
+  - module scope — add ephemeral `targetPriceUsd`
   - after `buildTargetPriceAnnotation` (before `buildChartConfig`) — add `updateTargetAnnotation()`
   - after `updateTargetAnnotation` — add `bindTargetPrice()`
   - ~line 3473 — wire `syncCurrencyGuard` into the vsCurrency `change` handler
   - near end of init sequence — call `bindTargetPrice()`
 
-- [ ] **Step 1: Add `targetPriceUsd` to `state`**
+- [x] **Step 1: Add module-local `targetPriceUsd` state**
 
-In `js/app.js`, line 60, change:
-
-```js
-let state = { txs: [], goals: createEmptyGoalsState() };
-```
-
-to:
+Keep the value outside the persisted application state:
 
 ```js
-let state = { txs: [], goals: createEmptyGoalsState(), targetPriceUsd: null };
+let targetPriceUsd = null;
 ```
 
-- [ ] **Step 2: Add `updateTargetAnnotation()` — the live path**
+- [x] **Step 2: Add `updateTargetAnnotation()` — the live path**
 
-In `js/app.js`, immediately after the `buildTargetPriceAnnotation` function (before `buildChartConfig`), insert:
+In `js/app.js`, near `buildChartConfig()`, add:
 
 ```js
 /**
@@ -388,7 +386,7 @@ In `js/app.js`, immediately after the `buildTargetPriceAnnotation` function (bef
 function updateTargetAnnotation() {
   if (!_chart) return;
   const annotations = _chart.options.plugins?.annotation?.annotations ?? {};
-  const ann = buildTargetPriceAnnotation(state.targetPriceUsd);
+  const ann = buildTargetPriceAnnotation(targetPriceUsd);
   if (ann) {
     annotations.targetPrice = ann;
   } else {
@@ -401,7 +399,7 @@ function updateTargetAnnotation() {
 }
 ```
 
-- [ ] **Step 3: Add `bindTargetPrice()` — input handler + guard**
+- [x] **Step 3: Add `bindTargetPrice()` — input handler + guard**
 
 Immediately after `updateTargetAnnotation()`, insert:
 
@@ -416,19 +414,19 @@ function bindTargetPrice() {
   if (!input) return () => {};
 
   function syncCurrencyGuard() {
-    const isUsd = (state.vs || 'usd') === 'usd';
+    const isUsd = (document.getElementById('vsCurrency')?.value || 'usd') === 'usd';
     input.disabled = !isUsd;
     if (hint) hint.hidden = isUsd;
     if (!isUsd) {
       input.value = '';
-      state.targetPriceUsd = null;
+      targetPriceUsd = null;
       updateTargetAnnotation();
     }
   }
 
   input.addEventListener('input', () => {
     const raw = parseFloat(input.value);
-    state.targetPriceUsd = Number.isFinite(raw) && raw > 0 ? raw : null;
+    targetPriceUsd = Number.isFinite(raw) && raw > 0 ? raw : null;
     updateTargetAnnotation();
   });
 
@@ -436,7 +434,7 @@ function bindTargetPrice() {
 }
 ```
 
-- [ ] **Step 4: Wire `syncCurrencyGuard` into the vsCurrency change handler**
+- [x] **Step 4: Wire `syncCurrencyGuard` into the vsCurrency change handler**
 
 In `js/app.js`, find the `change` event listener (~line 3472). It currently looks like:
 
@@ -477,7 +475,7 @@ document.addEventListener('change', async (e) => {
   }
 ```
 
-- [ ] **Step 5: Declare `syncCurrencyGuard` at module scope and call `bindTargetPrice()` at init**
+- [x] **Step 5: Declare `syncCurrencyGuard` at module scope and call `bindTargetPrice()` at init**
 
 `syncCurrencyGuard` must be accessible in the `change` event listener. Add a module-level declaration near the other module-level `let` declarations (around line 61–66):
 
@@ -499,7 +497,7 @@ grep -n "bindChartPins\|bindChart\|DOMContentLoaded\|renderChart()" js/app.js | 
 
 Place `syncCurrencyGuard = bindTargetPrice();` immediately after the existing `bindChartPins(...)` call. This guarantees the input is bound after the DOM is ready and after the chart has been initialized (so `_chart` is available for immediate annotation updates if needed).
 
-- [ ] **Step 6: Run full test suite**
+- [x] **Step 6: Run full test suite**
 
 ```bash
 npm test
@@ -507,12 +505,12 @@ npm test
 
 Expected: all tests pass.
 
-- [ ] **Step 7: Full acceptance test in browser**
+- [x] **Step 7: Full acceptance test in browser**
 
 Test each criterion from the spec:
 
 1. Input visible in chart header — ✓ title left, input right
-2. `state.vs === 'usd'` (default) → input enabled, hint hidden
+2. Moeda selecionada `usd` (default) → input enabled, hint hidden
 3. Type `70000` → dashed amber line appears at $70,000 with label `▸ $70,000`
 4. Clear input → line disappears, no console errors
 5. Change currency to `eur` → input disabled, hint "Disponível apenas em USD" visible, line removed
@@ -520,7 +518,7 @@ Test each criterion from the spec:
 7. Apply a chart filter (year picker or entry toggle) → target line survives the re-render
 8. Open browser console — zero errors
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add js/app.js
@@ -531,10 +529,10 @@ git commit -m "feat(chart): target price line — state, live update, input hand
 
 ## Acceptance Criteria Checklist (from spec)
 
-- [ ] Input visível no header do card do gráfico, sem quebrar layout desktop nem mobile (375px)
-- [ ] Input activo apenas quando `state.vs === 'usd'`; desabilitado com microcopy "Disponível apenas em USD" caso contrário
-- [ ] Linha horizontal amber aparece imediatamente ao digitar um valor > 0
-- [ ] Label `"▸ $X,XXX"` visível à direita da linha
-- [ ] Campo vazio ou zero → linha desaparece sem erros no console
-- [ ] Nenhuma regressão no crosshair, na linha PM, ou nos pins de aportes
-- [ ] Nenhum hex literal introduzido no CSS (lint gate)
+- [x] Input visível no header do card do gráfico, sem quebrar layout desktop nem mobile (375px)
+- [x] Input activo apenas quando a moeda selecionada e `usd`; desabilitado com microcopy "Disponível apenas em USD" caso contrário
+- [x] Linha horizontal amber aparece imediatamente ao digitar um valor > 0
+- [x] Label `"▸ $X,XXX"` visível à direita da linha
+- [x] Campo vazio ou zero → linha desaparece sem erros no console
+- [x] Nenhuma regressão no crosshair, na linha PM, ou nos pins de aportes
+- [x] Nenhum hex literal introduzido no CSS (lint gate)

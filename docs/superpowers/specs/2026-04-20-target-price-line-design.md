@@ -1,7 +1,7 @@
 # Target Price Line no Gráfico — Design Spec
 
 **Data:** 2026-04-20
-**Estado:** Aprovado
+**Estado:** Implementado e validado
 
 ---
 
@@ -14,12 +14,12 @@ Permitir que Lucas defina um preço-alvo em USD e veja-o como linha horizontal p
 ## Contexto e decisões
 
 - **Posicionamento:** header do card do gráfico (`.chart-head`), à direita do título — acesso rápido sem abrir menus, contextual ao gráfico.
-- **Moeda:** sempre USD. Se o gráfico estiver noutra moeda (`state.vs !== 'usd'`), o input fica desabilitado com microcopy. A conversão de unidades fica fora de scope deste lote.
-- **Persistência:** nenhuma neste lote. `state.targetPriceUsd` vive apenas em memória — limpa ao recarregar a página.
+- **Moeda:** sempre USD. Se o seletor estiver noutra moeda, o input fica desabilitado com microcopy. A conversão de unidades fica fora de scope deste lote.
+- **Persistência:** nenhuma neste lote. `targetPriceUsd` vive em estado efemero de modulo, fora do objeto salvo por `saveState()`, e limpa ao recarregar a pagina.
 - **Plugin:** `chartjs-plugin-annotation` já registado em `app.js`. Usar directamente — sem novo plugin, sem dataset fictício.
 - **Update — dois paths complementares:**
-  1. **Path canónico (re-renders):** `buildChartConfig()` lê `state.targetPriceUsd` e inclui a annotation `targetPrice` na config que constrói. Qualquer re-render (filtros, ano, moeda, refresh de série) reconstrói o chart com o target já incluído.
-  2. **Path live (keystroke):** após actualizar `state.targetPriceUsd`, mutação directa de `_chart.options.plugins.annotation.annotations` + `_chart.update('none')` para resposta imediata sem rebuild completo. Este path só serve para a UX do input — o chart re-renderizado pelo path canónico já inclui o estado correcto.
+  1. **Path canónico (re-renders):** `buildChartConfig()` lê `targetPriceUsd` e inclui a annotation `targetPrice` na config que constrói. Qualquer re-render (filtros, ano, moeda, refresh de série) reconstrói o chart com o target já incluído.
+  2. **Path live (keystroke):** após actualizar `targetPriceUsd`, mutação directa de `_chart.options.plugins.annotation.annotations` + `_chart.update('none')` para resposta imediata sem rebuild completo. Este path só serve para a UX do input — o chart re-renderizado pelo path canónico já inclui o estado correcto.
 
 ---
 
@@ -84,10 +84,10 @@ Mobile (≤480px): o `.chart-head` já usa `display: flex; justify-content: spac
 
 ### 3. State (`app.js`)
 
-Adicionar ao objecto `state`:
+Adicionar como estado efemero no modulo, fora do objecto persistido:
 
 ```js
-targetPriceUsd: null,   // number | null
+let targetPriceUsd = null; // estado efemero, fora de saveState()
 ```
 
 ### 4. Handler do input (`app.js`)
@@ -99,20 +99,20 @@ function bindTargetPrice() {
   if (!input) return;
 
   function syncCurrencyGuard() {
-    const isUsd = (state.vs || 'usd') === 'usd';
+    const isUsd = resolvedVsCurrencyLower() === 'usd';
     input.disabled = !isUsd;
     if (hint) hint.hidden = isUsd;
     if (!isUsd) {
       // Limpa campo E estado ao sair de USD — sem ambiguidade ao voltar
       input.value = '';
-      state.targetPriceUsd = null;
+      targetPriceUsd = null;
       updateTargetAnnotation();
     }
   }
 
   input.addEventListener('input', () => {
     const raw = parseFloat(input.value);
-    state.targetPriceUsd = Number.isFinite(raw) && raw > 0 ? raw : null;
+    targetPriceUsd = Number.isFinite(raw) && raw > 0 ? raw : null;
     updateTargetAnnotation();
   });
 
@@ -133,18 +133,19 @@ function updateTargetAnnotation() {
 
   const annotations = _chart.options.plugins?.annotation?.annotations ?? {};
 
-  if (state.targetPriceUsd) {
+  if (targetPriceUsd) {
     annotations.targetPrice = {
       type: 'line',
       scaleID: 'y',
-      value: state.targetPriceUsd,
+      value: targetPriceUsd,
+      adjustScaleRange: false,
       borderColor: getComputedStyle(document.documentElement)
                      .getPropertyValue('--color-status-warn').trim(),
       borderWidth: 1,
       borderDash: [6, 4],
       label: {
         display: true,
-        content: `▸ $${state.targetPriceUsd.toLocaleString('en-US')}`,
+        content: `▸ $${targetPriceUsd.toLocaleString('en-US')}`,
         position: 'end',
         color: getComputedStyle(document.documentElement)
                  .getPropertyValue('--color-status-warn').trim(),
@@ -169,10 +170,10 @@ function updateTargetAnnotation() {
 
 ## Fluxo completo
 
-1. Página carrega → `state.targetPriceUsd = null`, input vazio, sem linha.
+1. Página carrega → `targetPriceUsd = null`, input vazio, sem linha.
 2. `vsCurrency` é `usd` → input activo.
-3. Lucas escreve `"70000"` → `state.targetPriceUsd = 70000` → `updateTargetAnnotation()` → linha amber aparece com label `"▸ $70,000"`.
-4. Lucas apaga o valor → `state.targetPriceUsd = null` → linha desaparece.
+3. Lucas escreve `"70000"` → `targetPriceUsd = 70000` → `updateTargetAnnotation()` → linha amber aparece com label `"▸ $70,000"`.
+4. Lucas apaga o valor → `targetPriceUsd = null` → linha desaparece.
 5. Lucas muda `vsCurrency` para `eur` → `syncCurrencyGuard()` → input desabilitado, hint visível, linha removida.
 6. Lucas volta para `usd` → input reactivado, mas valor anterior está limpo (sem state de conversão).
 
@@ -180,13 +181,13 @@ function updateTargetAnnotation() {
 
 ## Critérios de aceitação
 
-- [ ] Input visível no header do card do gráfico, sem quebrar layout desktop nem mobile (375px)
-- [ ] Input activo apenas quando `state.vs === 'usd'`; desabilitado com microcopy "Disponível apenas em USD" caso contrário
-- [ ] Linha horizontal amber aparece imediatamente ao digitar um valor > 0
-- [ ] Label `"▸ $X,XXX"` visível à direita da linha
-- [ ] Campo vazio ou zero → linha desaparece sem erros no console
-- [ ] Nenhuma regressão no crosshair, na linha de preço médio, ou nos pins de aportes
-- [ ] Nenhum hex literal introduzido no CSS (lint gate)
+- [x] Input visível no header do card do gráfico, sem quebrar layout desktop nem mobile (375px)
+- [x] Input activo apenas quando a moeda selecionada e `usd`; desabilitado com microcopy "Disponível apenas em USD" caso contrário
+- [x] Linha horizontal amber aparece imediatamente ao digitar um valor > 0
+- [x] Label `"▸ $X,XXX"` visível à direita da linha
+- [x] Campo vazio ou zero → linha desaparece sem erros no console
+- [x] Nenhuma regressão no crosshair, na linha de preço médio, ou nos pins de aportes
+- [x] Nenhum hex literal introduzido no CSS (lint gate)
 
 ---
 
