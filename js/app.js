@@ -51,6 +51,7 @@ import {
   renderImportPreview,
 } from './ui/import-export/render.js';
 import { createPriceService } from './services/price-service.js';
+import { fetchWithTimeout } from './services/http.js';
 import { bindChartPins } from './ui/chart/bind.js';
 import { chartTokens, readToken } from './ui/chart/tokens.js';
 import { bindSectionNavigation } from './ui/section-nav.js';
@@ -144,7 +145,7 @@ function normalizeRemoteFetchError(source, error) {
 async function fetchJsonOrThrow(url, { source } = {}) {
   let res;
   try {
-    res = await fetch(url);
+    res = await fetchWithTimeout(url);
   } catch (error) {
     throw normalizeRemoteFetchError(source || 'remote', error);
   }
@@ -3204,13 +3205,19 @@ async function fetchOHLC(days = 90, vsOverride) {
   const label = normalizedDays === 'max' ? 'histórico completo' : `${normalizedDays} dias`;
   const hideLoading = showLoadingOverlay(`A carregar velas (OHLC) — ${label}…`);
   try {
-    const res = await fetch(
-      `https://api.coingecko.com/api/v3/coins/bitcoin/ohlc?vs_currency=${vs}&days=${normalizedDays}`
+    const json = await fetchJsonOrThrow(
+      `https://api.coingecko.com/api/v3/coins/bitcoin/ohlc?vs_currency=${vs}&days=${normalizedDays}`,
+      { source: 'CoinGecko OHLC' }
     );
-    if (!res.ok) throw new Error('Erro ao buscar OHLC');
-    const json = await res.json();
+    if (!Array.isArray(json)) {
+      throw createRemoteFetchError(
+        'CoinGecko OHLC',
+        'invalid_payload',
+        'CoinGecko returned an invalid OHLC payload'
+      );
+    }
     // json: array of [timestamp, open, high, low, close]
-    state.ohlc = (json || []).map((d) => ({ t: d[0], o: d[1], h: d[2], l: d[3], c: d[4] }));
+    state.ohlc = json.map((d) => ({ t: d[0], o: d[1], h: d[2], l: d[3], c: d[4] }));
     ohlcSeriesMeta = { days: normalizedDays, vs };
     return state.ohlc;
   } catch (err) {
@@ -3235,9 +3242,7 @@ async function fetchHistoricalPriceForDate(dateStr, vs) {
   vs = (vs || document.getElementById('vsCurrency')?.value || 'usd').toLowerCase();
   try {
     const url = `https://api.coingecko.com/api/v3/coins/bitcoin/history?date=${cgDate}&localization=false`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error('Erro ao buscar histórico');
-    const json = await res.json();
+    const json = await fetchJsonOrThrow(url, { source: 'CoinGecko daily history' });
     const price = json?.market_data?.current_price?.[vs];
     if (!price) return null;
     return Number(price);
