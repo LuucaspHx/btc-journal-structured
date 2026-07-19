@@ -785,6 +785,16 @@ h1, h2, h3, h4 {
     font-size: 16px;
   }
 
+  /* Grid tracks default to min-width: auto and can push dense panels past the viewport. */
+  .wrap {
+    grid-template-columns: minmax(0, 1fr);
+    margin: 12px auto;
+    padding: 12px;
+  }
+  .wrap > * {
+    min-width: 0;
+  }
+
   .chart-head {
     flex-direction: column;
     align-items: stretch;
