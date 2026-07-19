@@ -50,6 +50,7 @@ describe('ui/chart/helpers', () => {
       type: 'line',
       scaleID: 'y',
       value: 70000,
+      adjustScaleRange: false,
       borderColor: 'amber',
       borderWidth: 1,
       borderDash: [6, 4],

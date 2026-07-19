@@ -35,6 +35,7 @@ export function buildTargetPriceAnnotation(
     type: 'line',
     scaleID: 'y',
     value,
+    adjustScaleRange: false,
     borderColor: color,
     borderWidth: 1,
     borderDash: [6, 4],
