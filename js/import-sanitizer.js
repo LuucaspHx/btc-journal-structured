@@ -1,7 +1,11 @@
 // import-sanitizer.js
 // ES module com funções portáveis para validação/sanitização de import JSON do BTC Journal
 
-function uid() { return Math.random().toString(36).slice(2,10) + Date.now().toString(36).slice(-4); }
+export const MAX_IMPORT_ENTRIES = 10_000;
+
+function uid() {
+  return Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4);
+}
 
 export function asNumber(v, def = null) {
   if (v == null) return def;
@@ -13,7 +17,7 @@ export function asDateString(v) {
   if (!v) return null;
   const d = new Date(v);
   if (isNaN(d.getTime())) return null;
-  return d.toISOString().slice(0,10);
+  return d.toISOString().slice(0, 10);
 }
 
 export function satsFrom(fiat, price) {
@@ -86,18 +90,19 @@ export function normalizeEntry(raw) {
     wallet: sanitizeText(raw.wallet, 100),
     strategy: sanitizeText(raw.strategy, 80),
     note: sanitizeText(raw.note, 500),
-    tags: sanitizeTags(raw.tags)
+    tags: sanitizeTags(raw.tags),
   };
 }
 
 export function sanitizeImportPayload(payload) {
-  const allowedVs = ['eur','usd','brl'];
-  let entriesRaw = null;
+  const allowedVs = ['eur', 'usd', 'brl'];
+  let entriesRaw;
   let vs = undefined;
   let year = undefined;
 
   const extractMeta = (source = {}) => {
-    if (typeof source.vs === 'string' && allowedVs.includes(source.vs.toLowerCase())) vs = source.vs.toLowerCase();
+    if (typeof source.vs === 'string' && allowedVs.includes(source.vs.toLowerCase()))
+      vs = source.vs.toLowerCase();
     if (Number.isInteger(source.year)) year = source.year;
   };
 
@@ -110,10 +115,23 @@ export function sanitizeImportPayload(payload) {
       entriesRaw = payload.txs;
       extractMeta(payload);
     } else {
-      return { ok: false, reason: 'Formato inválido. Esperado { entries: [...] } ou um array de entradas.' };
+      return {
+        ok: false,
+        reason: 'Formato inválido. Esperado { entries: [...] } ou um array de entradas.',
+      };
     }
   } else {
-    return { ok: false, reason: 'Formato inválido. Esperado { entries: [...] } ou um array de entradas.' };
+    return {
+      ok: false,
+      reason: 'Formato inválido. Esperado { entries: [...] } ou um array de entradas.',
+    };
+  }
+
+  if (entriesRaw.length > MAX_IMPORT_ENTRIES) {
+    return {
+      ok: false,
+      reason: `Arquivo excede o limite de ${MAX_IMPORT_ENTRIES.toLocaleString('pt-BR')} entradas.`,
+    };
   }
 
   const valid = [];
@@ -129,7 +147,8 @@ export function sanitizeImportPayload(payload) {
     }
   }
 
-  if (valid.length === 0) return { ok: false, reason: 'Nenhuma entrada válida encontrada no arquivo.' };
+  if (valid.length === 0)
+    return { ok: false, reason: 'Nenhuma entrada válida encontrada no arquivo.' };
 
   return { ok: true, entries: valid, invalid, vs, year, sources };
 }

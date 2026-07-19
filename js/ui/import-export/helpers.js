@@ -1,5 +1,14 @@
 import { migrateV1ToV3 } from '../../storage/migrations.js';
 
+export const MAX_IMPORT_FILE_BYTES = 5 * 1024 * 1024;
+
+export function getImportFileSizeError(file, maxBytes = MAX_IMPORT_FILE_BYTES) {
+  const size = Number(file?.size);
+  if (!Number.isFinite(size) || size <= maxBytes) return null;
+  const maxMiB = Math.round(maxBytes / (1024 * 1024));
+  return `Arquivo excede o limite de ${maxMiB} MB.`;
+}
+
 export const csvEscape = (value) => {
   const text = value == null ? '' : String(value);
   // Força quoting se começar com caracteres de fórmula (proteção CSV injection)
@@ -30,12 +39,13 @@ export function normalizeImportShape(parsed) {
     parsed.txs,
     parsed.data,
     parsed.records,
-    parsed.payload?.entries
+    parsed.payload?.entries,
   ].filter((value) => Array.isArray(value));
 
   if (Array.isArray(parsed)) return { entries: parsed, meta, goals: undefined };
   if (candidates.length > 0) return { entries: candidates[0], meta, goals };
-  if (parsed.payload && Array.isArray(parsed.payload)) return { entries: parsed.payload, meta, goals };
+  if (parsed.payload && Array.isArray(parsed.payload))
+    return { entries: parsed.payload, meta, goals };
   return null;
 }
 
