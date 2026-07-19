@@ -60,9 +60,10 @@ import { isRetryCoolingDown, recordRetryFailure } from './services/retry-policy.
 import { bindChartPins } from './ui/chart/bind.js';
 import {
   buildTargetPriceAnnotation,
-  computePointRadius,
+  buildAverageDataset,
+  buildChartEntryPoint,
+  buildEntryDataset,
   getPrimaryPriceDataset,
-  MAX_POINT_RADIUS,
   sanitizeChartConfig,
 } from './ui/chart/helpers.js';
 import { chartTokens, readToken } from './ui/chart/tokens.js';
@@ -2520,85 +2521,9 @@ function buildChartSeries(visibleTxs = getVisibleTxs()) {
   const priceData = priceSeries.map((p) => p.p);
   const currentPrice = priceSeries.length ? Number(priceSeries[priceSeries.length - 1].p) : null;
   const chartTxs = getTxsForChart(visibleTxs) || [];
-  const points = chartTxs.map((tx) => createChartPoint(tx, currentPrice)).filter(Boolean);
+  const points = chartTxs.map((tx) => buildChartEntryPoint(tx, currentPrice)).filter(Boolean);
   const avgPrice = chartTxs.length ? pmMedio(chartTxs) : 0;
   return { labels, priceData, points, avgPrice, chartTxs, currentPrice };
-}
-
-function createChartPoint(tx, currentPrice) {
-  const dateStr = getTxDate(tx);
-  const time = dateStr ? new Date(dateStr).getTime() : NaN;
-  if (Number.isNaN(time)) return null;
-  const price = getTxPrice(tx);
-  if (!Number.isFinite(price) || price <= 0) return null;
-  const sats = getTxSats(tx);
-  const plPct = currentPrice && price ? ((currentPrice - price) / price) * 100 : 0;
-  const type = typeof tx.type === 'string' ? tx.type.toLowerCase() : 'buy';
-  return {
-    x: time,
-    y: price,
-    sats,
-    note: getTxNote(tx),
-    exchange: tx.exchange || '',
-    type,
-    closed: Boolean(tx.closed),
-    fiat: getTxFiat(tx),
-    plPct,
-    id: tx.id,
-  };
-}
-
-function buildEntryDataset(points = []) {
-  return {
-    type: 'scatter',
-    label: 'Entradas',
-    data: points,
-    parsing: false,
-    pointRadius(context) {
-      return computePointRadius(context.raw?.sats || 0);
-    },
-    pointHoverRadius(context) {
-      return Math.min(MAX_POINT_RADIUS + 2, computePointRadius(context.raw?.sats || 0) + 2);
-    },
-    pointHitRadius(context) {
-      return Math.min(MAX_POINT_RADIUS + 6, computePointRadius(context.raw?.sats || 0) + 6);
-    },
-    pointBackgroundColor(context) {
-      const raw = context.raw || {};
-      if (raw.closed) return chartTokens.textMuted();
-      if (raw.type === 'sell') return chartTokens.warn();
-      if (raw.plPct > 0) return chartTokens.ok();
-      if (raw.plPct < 0) return chartTokens.danger();
-      return chartTokens.warn();
-    },
-    pointBorderColor(context) {
-      const raw = context.raw || {};
-      if (raw.closed) return chartTokens.textMuted();
-      return chartTokens.bgPage();
-    },
-    pointBorderWidth: 1,
-    pointStyle(context) {
-      const raw = context.raw || {};
-      if (raw.closed) return 'rectRounded';
-      if (raw.type === 'sell') return 'triangle';
-      return 'circle';
-    },
-    order: 10,
-  };
-}
-
-function buildAverageDataset(length = 0, avgPrice = 0) {
-  return {
-    label: 'Preço médio',
-    type: 'line',
-    data: Array.from({ length }, () => avgPrice),
-    borderColor: chartTokens.warn(),
-    borderDash: [6, 6],
-    borderWidth: 1,
-    pointRadius: 0,
-    tension: 0,
-    order: 2,
-  };
 }
 
 function isAnnotationAvailable() {
@@ -2779,7 +2704,7 @@ function buildChartConfig(series, options = {}) {
     tension: 0.2,
     order: 1,
   });
-  datasets.push(buildEntryDataset(series.points));
+  datasets.push(buildEntryDataset(series.points, chartTokens));
 
   const useAnnotation = options.allowAnnotation && isAnnotationAvailable();
   const targetAnnotation =
@@ -2790,7 +2715,7 @@ function buildChartConfig(series, options = {}) {
         })
       : null;
   if (!useAnnotation && options.addAverageDataset && series.avgPrice > 0) {
-    datasets.push(buildAverageDataset(series.labels.length, series.avgPrice));
+    datasets.push(buildAverageDataset(series.labels.length, series.avgPrice, chartTokens));
   }
 
   const cfg = {

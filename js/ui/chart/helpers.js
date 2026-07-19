@@ -1,5 +1,5 @@
 import { calcEntryPnL } from '../../core/calculations.js';
-import { getTxPrice, getTxSats, getTxFiat, getTxDate } from '../table/helpers.js';
+import { getTxPrice, getTxSats, getTxFiat, getTxDate, getTxNote } from '../table/helpers.js';
 
 export const MIN_POINT_RADIUS = 3;
 export const MAX_POINT_RADIUS = 10;
@@ -55,6 +55,84 @@ export function getPrimaryPriceDataset(cfg) {
         dataset.label.startsWith('BTC/')
     ) || null
   );
+}
+
+export function buildChartEntryPoint(tx, currentPrice) {
+  const dateStr = getTxDate(tx);
+  const time = dateStr ? new Date(dateStr).getTime() : Number.NaN;
+  if (Number.isNaN(time)) return null;
+
+  const price = getTxPrice(tx);
+  if (!Number.isFinite(price) || price <= 0) return null;
+
+  const sats = getTxSats(tx);
+  const plPct = currentPrice && price ? ((currentPrice - price) / price) * 100 : 0;
+  const type = typeof tx.type === 'string' ? tx.type.toLowerCase() : 'buy';
+  return {
+    x: time,
+    y: price,
+    sats,
+    note: getTxNote(tx),
+    exchange: tx.exchange || '',
+    type,
+    closed: Boolean(tx.closed),
+    fiat: getTxFiat(tx),
+    plPct,
+    id: tx.id,
+  };
+}
+
+export function buildEntryDataset(points = [], tokens) {
+  return {
+    type: 'scatter',
+    label: 'Entradas',
+    data: points,
+    parsing: false,
+    pointRadius(context) {
+      return computePointRadius(context.raw?.sats || 0);
+    },
+    pointHoverRadius(context) {
+      return Math.min(MAX_POINT_RADIUS + 2, computePointRadius(context.raw?.sats || 0) + 2);
+    },
+    pointHitRadius(context) {
+      return Math.min(MAX_POINT_RADIUS + 6, computePointRadius(context.raw?.sats || 0) + 6);
+    },
+    pointBackgroundColor(context) {
+      const raw = context.raw || {};
+      if (raw.closed) return tokens.textMuted();
+      if (raw.type === 'sell') return tokens.warn();
+      if (raw.plPct > 0) return tokens.ok();
+      if (raw.plPct < 0) return tokens.danger();
+      return tokens.warn();
+    },
+    pointBorderColor(context) {
+      const raw = context.raw || {};
+      if (raw.closed) return tokens.textMuted();
+      return tokens.bgPage();
+    },
+    pointBorderWidth: 1,
+    pointStyle(context) {
+      const raw = context.raw || {};
+      if (raw.closed) return 'rectRounded';
+      if (raw.type === 'sell') return 'triangle';
+      return 'circle';
+    },
+    order: 10,
+  };
+}
+
+export function buildAverageDataset(length = 0, avgPrice = 0, tokens) {
+  return {
+    label: 'Preço médio',
+    type: 'line',
+    data: Array.from({ length }, () => avgPrice),
+    borderColor: tokens.warn(),
+    borderDash: [6, 6],
+    borderWidth: 1,
+    pointRadius: 0,
+    tension: 0,
+    order: 2,
+  };
 }
 
 function isValidLineChartPoint(point) {
