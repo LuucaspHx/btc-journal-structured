@@ -56,6 +56,7 @@ import {
 } from './ui/import-export/render.js';
 import { createPriceService } from './services/price-service.js';
 import { fetchWithTimeout } from './services/http.js';
+import { isRetryCoolingDown, recordRetryFailure } from './services/retry-policy.js';
 import { bindChartPins } from './ui/chart/bind.js';
 import { buildTargetPriceAnnotation } from './ui/chart/helpers.js';
 import { chartTokens, readToken } from './ui/chart/tokens.js';
@@ -106,6 +107,7 @@ let ohlcSeriesMeta = null;
 let lastFailedPriceMeta = null;
 let lastFailedOhlcMeta = null;
 let lastPriceFetchIssue = null;
+let ohlcRetryTimer = null;
 const TXID_STATUS_TONES = {
   manual: 'muted',
   pending: 'info',
@@ -698,23 +700,48 @@ function schedulePriceSeriesFetch(range, vs, callback) {
 function scheduleOhlcFetch(range, vs, callback) {
   if (_fetchingOHLC) return;
   const days = determineOhlcDays(range);
-  if (_ohlcFetchMatchesFailure(days, vs)) return;
+  const request = { days, vs };
+  if (isRetryCoolingDown(lastFailedOhlcMeta, request)) return;
   _fetchingOHLC = true;
   fetchOHLC(days, vs)
     .then(() => {
       _fetchingOHLC = false;
       lastFailedOhlcMeta = null;
+      if (ohlcRetryTimer !== null) {
+        clearTimeout(ohlcRetryTimer);
+        ohlcRetryTimer = null;
+      }
       if (typeof callback === 'function') callback();
     })
-    .catch(() => {
+    .catch((error) => {
       _fetchingOHLC = false;
-      lastFailedOhlcMeta = { days, vs };
+      lastFailedOhlcMeta = recordRetryFailure(lastFailedOhlcMeta, request);
+      const seconds = Math.ceil(lastFailedOhlcMeta.delayMs / 1_000);
+      console.error('fetchOHLC error', error);
+      showMessage(`Erro ao obter dados OHLC. Nova tentativa em ${seconds}s.`, 'warn');
+      scheduleOhlcRetry(lastFailedOhlcMeta);
+      if (typeof callback === 'function') callback();
     });
 }
 
-function _ohlcFetchMatchesFailure(days, vs) {
-  if (!lastFailedOhlcMeta) return false;
-  return lastFailedOhlcMeta.days === days && lastFailedOhlcMeta.vs === vs;
+function isOhlcRetryCoolingDown(range, vs) {
+  return isRetryCoolingDown(lastFailedOhlcMeta, { days: determineOhlcDays(range), vs });
+}
+
+function scheduleOhlcRetry(failure) {
+  if (ohlcRetryTimer !== null) clearTimeout(ohlcRetryTimer);
+  const retryIn = Math.max(0, failure.retryAt - Date.now());
+  ohlcRetryTimer = setTimeout(() => {
+    ohlcRetryTimer = null;
+    if (getChartMode() !== 'candles' || resolvedVsCurrencyLower() !== failure.vs) return;
+    scheduleOhlcFetch(expandRange(ensureChartRange()), failure.vs, renderOhlcRetryTargets);
+  }, retryIn);
+}
+
+function renderOhlcRetryTargets() {
+  renderChart();
+  const overlay = document.getElementById('chartGlassOverlay');
+  if (overlay && overlay.style.display === 'flex') renderChartToCanvas('glassBtcChart');
 }
 
 function hydrateYearOptions() {
@@ -2943,8 +2970,10 @@ function renderChartToCanvas(canvasId = 'btcChart', visibleTxs = getVisibleTxs()
     return;
   }
   if (getChartMode() === 'candles' && shouldRefreshOhlc(fetchRange, vs)) {
-    scheduleOhlcFetch(fetchRange, vs, () => renderChartToCanvas(canvasId, visibleTxs));
-    return;
+    if (!isOhlcRetryCoolingDown(fetchRange, vs)) {
+      scheduleOhlcFetch(fetchRange, vs, () => renderChartToCanvas(canvasId, visibleTxs));
+      return;
+    }
   }
   const series = buildChartSeries(visibleTxs);
   const cfg = buildChartConfig(series, {
@@ -3303,10 +3332,9 @@ async function fetchOHLC(days = 90, vsOverride) {
     ohlcSeriesMeta = { days: normalizedDays, vs };
     return state.ohlc;
   } catch (err) {
-    console.error('fetchOHLC error', err);
-    showMessage('Erro ao obter dados OHLC.', 'warn');
     state.ohlc = [];
-    return [];
+    ohlcSeriesMeta = null;
+    throw err;
   } finally {
     hideLoading();
   }
@@ -3367,8 +3395,10 @@ function renderChart(visibleTxs = getVisibleTxs()) {
     return;
   }
   if (getChartMode() === 'candles' && shouldRefreshOhlc(fetchRange, vs)) {
-    scheduleOhlcFetch(fetchRange, vs, () => renderChart());
-    return;
+    if (!isOhlcRetryCoolingDown(fetchRange, vs)) {
+      scheduleOhlcFetch(fetchRange, vs, () => renderChart());
+      return;
+    }
   }
   const series = buildChartSeries(visibleTxs);
   const cfg = buildChartConfig(series, {
@@ -3567,14 +3597,12 @@ document.addEventListener('change', async (e) => {
     } catch (error) {
       console.warn('Currency switch price fetch failed', error);
     }
-    if (document.getElementById('chartMode')?.value === 'candles') await fetchOHLC(90);
     renderChart();
     const overlay = document.getElementById('chartGlassOverlay');
     if (overlay && overlay.style.display === 'flex') renderChartToCanvas('glassBtcChart');
   }
   if (e.target && e.target.id === 'chartMode') {
     setChartMode(e.target.value);
-    if (getChartMode() === 'candles') await fetchOHLC(90);
     renderChart();
     const overlay = document.getElementById('chartGlassOverlay');
     if (overlay && overlay.style.display === 'flex') renderChartToCanvas('glassBtcChart');
