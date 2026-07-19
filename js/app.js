@@ -53,6 +53,7 @@ import {
 import { createPriceService } from './services/price-service.js';
 import { bindChartPins } from './ui/chart/bind.js';
 import { chartTokens, readToken } from './ui/chart/tokens.js';
+import { bindSectionNavigation } from './ui/section-nav.js';
 
 const LS_KEY = 'btc_journal_state_v3';
 const CHART_MODE_STORAGE_KEY = 'btc_journal_chart_mode';
@@ -2949,6 +2950,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function boot() {
+  bindSectionNavigation();
   loadState();
   priceService = createPriceService({ fetcher: createCoinGeckoFetcher() });
   priceService.onPriceUpdate(() => renderTableAndStats());

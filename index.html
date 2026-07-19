@@ -489,49 +489,6 @@
         </div>
       </main>
     </div>
-    <script>
-      (function () {
-        const menu = document.getElementById('sectionMenu');
-        const chartSection = document.getElementById('chartSection');
-        if (!menu || !chartSection) return;
-        const buttons = Array.from(menu.querySelectorAll('[data-section]'));
-        const panels = Array.from(document.querySelectorAll('[data-section-panel]'));
-
-        const targets = {
-          chart: chartSection,
-          summary: document.getElementById('summarySection'),
-          entry: document.getElementById('entrySection'),
-          transactions: document.getElementById('transactionsSection'),
-          audit: document.getElementById('auditSection'),
-          goals: document.getElementById('goalsSection'),
-        };
-
-        function setActiveSection(section) {
-          buttons.forEach((button) => {
-            const active = button.dataset.section === section;
-            button.classList.toggle('active', active);
-            button.setAttribute('aria-pressed', active ? 'true' : 'false');
-          });
-          panels.forEach((panel) => {
-            panel.hidden = panel.dataset.sectionPanel !== section;
-          });
-        }
-
-        setActiveSection('chart');
-
-        menu.addEventListener('click', (event) => {
-          const button = event.target.closest('[data-section]');
-          if (!button) return;
-          const section = button.dataset.section;
-          if (!section) return;
-          setActiveSection(section);
-          const target = targets[section];
-          if (target && typeof target.scrollIntoView === 'function') {
-            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-          }
-        });
-      })();
-    </script>
     <script type="module" src="./js/app.js"></script>
     <!-- Liquid Glass: defs globais -->
     <footer style="padding:12px 20px; display:flex; justify-content:center; gap:12px; align-items:center;">
