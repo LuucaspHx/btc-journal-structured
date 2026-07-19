@@ -45,6 +45,9 @@ Fluxo basico que voce vai repetir:
 - `js/ui/import-export/*` agora separa o fluxo de import/export em helpers, render e bind, mantendo a orquestracao no `js/app.js`.
 - `js/storage/*` cuida do `localStorage` e da migracao do legado.
 - `js/services/txid-service.js` valida TXIDs contra o explorer.
+- `js/services/http.js` centraliza fetch com timeout/abort e normalizacao de falhas.
+- `js/ui/section-nav.js` concentra a navegacao entre paineis sem script inline no HTML.
+- `js/ui/chart/helpers.js` concentra dados puros dos pins e a annotation de target price.
 - `js/features/goals-controller.js` controla metas, progresso e catalogos.
 - `js/import-sanitizer.js` normaliza imports legados e formatos externos.
 - `planilha.html` parece ser uma versao/experimento antigo; o botao correspondente na UI principal esta desativado.
@@ -170,8 +173,8 @@ Invariantes praticos:
 
 ## Testes existentes
 Suite local validada em 2026-07-19 com `npm test -- --runInBand`:
-- 15 suites ok
-- 86 testes ok
+- 16 suites ok
+- 100 testes ok
 
 Cobertura funcional atual:
 - `tests/core-schema.test.js`: shape canonico e defaults
@@ -186,7 +189,8 @@ Cobertura funcional atual:
 - `tests/core-goals.test.js`: metas, filtros e catalogos
 - `tests/goals-controller.test.js`: controlador de metas
 - `tests/price-service.test.js`: polling e cache de preco por moeda
-- `tests/ui-chart-helpers.test.js`: dataset e detalhe dos alfinetes do grafico
+- `tests/http-service.test.js`: timeout, abort e propagacao de respostas HTTP
+- `tests/ui-chart-helpers.test.js`: dataset/detalhe dos alfinetes e annotation de target price
 - `tests/ui-table-helpers.test.js`: formatacao do P&L por entrada
 - `tests/ui-audit-helpers.test.js`: helpers do painel de auditoria
 
@@ -197,6 +201,7 @@ Observacao:
 - `js/app.js` esta grande demais e mistura dominio, DOM, fetch, persistencia e renderizacao. E o principal ponto de manutencao dificil.
 - `import-sanitizer.js` ainda opera com shape antigo/minimo, e o runtime precisa reconciliar isso depois com `ensureCanonicalEntry()`.
 - Como tudo roda no browser, falhas de rede nas APIs externas afetam UX e podem parecer bugs locais.
+- O modo OHLC pode reagendar fetches rapidamente quando CoinGecko falha por rede/CORS, gerando repeticao de logs e toasts; precisa de backoff/deduplicacao antes de expandir o grafico de velas.
 - Persistencia apenas em `localStorage` significa risco de perda de dados se o usuario limpar o navegador sem exportar backup.
 - Migracoes precisam manter muito cuidado para nao sobrescrever estado atual sem backup.
 
@@ -237,15 +242,18 @@ Observacao:
 - Design system: tokens semanticos, bridge de tokens para Chart.js, tipografia Geist, focus-visible e adaptacao mobile.
 - Hardening de entrega: Pages publica apenas `dist/` minimo (`98678a8`).
 - Higiene de testes: Jest ignora worktrees e artefactos locais (`1b123f0`).
+- Seguranca runtime: SRI nos CDNs, navegacao sem script inline, fetch com timeout/abort e limites de importacao (`2551845`).
+- Target price line: target USD efemero, update live/canonico, guard de moeda e layout mobile validado em 375 px.
 
 ## Prioridades atuais
-1. Concluir o lote de seguranca runtime:
-   - SRI nos scripts CDN;
-   - extracao do script inline de navegacao;
-   - timeout/abort uniforme nos fetches;
-   - limite global no payload de importacao.
-2. Implementar a proxima feature de produto: target price line no grafico, conforme spec e plano aprovados.
+1. Corrigir o retry storm de OHLC com deduplicacao e backoff, preservando fallback e mensagens de erro.
+2. Preparar o lote CSP: inventariar/remover estilos inline antes de aplicar uma politica restritiva.
 3. Continuar a reducao de `js/app.js` sem misturar esse refactor com features pequenas.
+4. Selecionar o proximo incremento de produto apenas depois destes dois hardenings.
+
+Pendencias de configuracao remota (nao sao mudancas de codigo):
+- GitHub Pages ainda nao esta ativado para build por Actions; a API de Pages retorna 404.
+- A branch padrao remota ainda e `feat/nova-funcionalidade`; deve passar para `main` apos confirmacao explicita.
 
 ## Estado atual
 
@@ -260,11 +268,11 @@ Funcionalidades presentes no código (verificar com `git ls-files js/`):
 - Validação de TXID on-chain
 - Metas em sats com strategy/tags
 - UI modularizada: `ui/table/*`, `ui/import-export/*`, `ui/audit/*`
+- Target price USD no grafico, sem persistencia e com guard para outras moedas
 
 ## Próximo passo
 
-Proximo trabalho tecnico: **lote de seguranca runtime**.
+Proximo trabalho tecnico: **deduplicar e aplicar backoff ao fetch OHLC**.
 
-Proximo marco de produto: **target price line**. A spec aprovada esta em
-`docs/superpowers/specs/2026-04-20-target-price-line-design.md` e o plano em
-`docs/superpowers/plans/2026-04-20-target-price-line.md`.
+Depois: **CSP em lote separado**, apenas apos inventario dos estilos inline. O proximo
+marco de produto ainda nao foi selecionado.

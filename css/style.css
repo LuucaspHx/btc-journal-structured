@@ -127,8 +127,52 @@ header.site-header nav{
   height:120px; overflow:hidden; opacity:.95;
   margin:0 auto; max-width:800px;
 }
-.chart-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
-.chart-title{margin:0}
+.chart-head{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:var(--space-md);
+  margin-bottom:var(--space-sm);
+}
+.chart-title{
+  margin:0;
+  font-size:var(--text-base);
+  font-weight:var(--font-weight-bold);
+}
+.target-price-wrap{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-end;
+  flex-shrink:0;
+  gap:var(--space-xs);
+}
+.target-price-input{
+  box-sizing:border-box;
+  width:8.5rem;
+  min-height:2.25rem;
+  padding:var(--space-xs) var(--space-sm);
+  border:1px solid var(--color-border);
+  border-radius:10px;
+  background:var(--color-bg-surface-2);
+  color:var(--color-text-primary);
+  font-family:var(--font-data);
+  font-size:var(--text-sm);
+  font-variant-numeric:tabular-nums;
+  text-align:right;
+  transition:border-color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out);
+}
+.target-price-input::placeholder{
+  color:var(--color-text-muted);
+}
+.target-price-input:disabled{
+  cursor:not-allowed;
+  opacity:.45;
+}
+.target-price-hint{
+  color:var(--color-text-muted);
+  font-size:var(--text-xs);
+  line-height:var(--leading-tight);
+}
 .chart-body{min-height:280px}
 @media (max-width:900px){ .chart-body{min-height:220px} }
     html, body { height: 100%; }
@@ -741,6 +785,30 @@ h1, h2, h3, h4 {
     font-size: 16px;
   }
 
+  /* Grid tracks default to min-width: auto and can push dense panels past the viewport. */
+  .wrap {
+    grid-template-columns: minmax(0, 1fr);
+    margin: 12px auto;
+    padding: 12px;
+  }
+  .wrap > * {
+    min-width: 0;
+  }
+
+  .chart-head {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-sm);
+  }
+  .target-price-wrap {
+    align-items: flex-start;
+  }
+  .target-price-input {
+    width: 11rem;
+    min-height: 44px;
+    font-size: var(--text-md);
+  }
+
   /* Section nav: horizontal scroll strip — wrapping creates ~100px of sticky chrome */
   .section-menu {
     flex-wrap: nowrap;
@@ -797,4 +865,3 @@ h1, h2, h3, h4 {
     padding: 8px 12px;
   }
 }
-
