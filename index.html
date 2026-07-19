@@ -370,7 +370,26 @@
         </form>
 
         <div class="card chart-main-card section-panel" id="chartSection" data-section-panel="chart">
-          <div style="font-weight:800;">Gráfico BTC e marcadores de aportes</div>
+          <div class="chart-head">
+            <h2 class="chart-title">Gráfico BTC e marcadores de aportes</h2>
+            <div class="target-price-wrap">
+              <input
+                id="targetPriceInput"
+                class="target-price-input"
+                type="number"
+                min="0"
+                step="1000"
+                inputmode="decimal"
+                autocomplete="off"
+                placeholder="Target (USD)"
+                aria-label="Preço-alvo em USD"
+                aria-describedby="targetPriceCurrencyHint"
+              />
+              <span id="targetPriceCurrencyHint" class="target-price-hint" hidden>
+                Disponível apenas em USD
+              </span>
+            </div>
+          </div>
           <div id="chartContainer" style="height:320px; margin-top:8px;">
             <canvas id="btcChart"></canvas>
             <div id="chartEmptyState" class="chart-empty-state" hidden></div>
