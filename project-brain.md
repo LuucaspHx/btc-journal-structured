@@ -244,13 +244,14 @@ Observacao:
 - Hardening de entrega: Pages publica apenas `dist/` minimo (`98678a8`).
 - Higiene de testes: Jest ignora worktrees e artefactos locais (`1b123f0`).
 - Seguranca runtime: SRI nos CDNs, navegacao sem script inline, fetch com timeout/abort e limites de importacao (`2551845`).
+- CSP base: scripts, fontes, rede e objetos restritos a origens explicitamente usadas; estilos inline permanecem como excecao temporaria.
 - Target price line: target USD efemero, update live/canonico, guard de moeda e layout mobile validado em 375 px.
 - Estabilidade OHLC: falhas de CoinGecko entram em cooldown com backoff e deixam o grafico de preco como fallback.
 
 ## Prioridades atuais
-1. Preparar o lote CSP: inventariar/remover estilos inline antes de aplicar uma politica restritiva.
+1. Migrar os estilos inline restantes para fechar a excecao `style-src 'unsafe-inline'` da CSP.
 2. Continuar a reducao de `js/app.js` sem misturar esse refactor com features pequenas.
-3. Selecionar o proximo incremento de produto depois do lote CSP.
+3. Selecionar o proximo incremento de produto depois do trabalho de hardening/refactor.
 
 Configuracao remota validada em 2026-07-19:
 - GitHub Pages usa build por Actions, HTTPS obrigatorio e publica apenas o `dist/` minimo.
@@ -274,6 +275,6 @@ Funcionalidades presentes no código (verificar com `git ls-files js/`):
 
 ## Próximo passo
 
-Proximo trabalho tecnico: **CSP em lote separado**, apos inventario dos estilos inline.
+Proximo trabalho tecnico: **CSP estrita**, migrando os atributos `style` e os estilos dinamicos que ainda exigem `style-src 'unsafe-inline'`.
 
 O proximo marco de produto ainda nao foi selecionado.

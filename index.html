@@ -4,6 +4,11 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://api.coingecko.com https://min-api.cryptocompare.com https://api.coindesk.com https://mempool.space; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src 'none'"
+    />
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
     <title>BTC Journal — Esqueleto</title>
     <!-- Chart.js + time adapter (date-fns) -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js" integrity="sha384-JUh163oCRItcbPme8pYnROHQMC6fNKTBWtRG3I3I0erJkzNgL7uxKlNwcrcFKeqF" crossorigin="anonymous"></script>
