@@ -169,9 +169,9 @@ Invariantes praticos:
   - mempool.space
 
 ## Testes existentes
-Suite local validada em 2026-04-12 com `npm test`:
-- 11 suites ok
-- 60 testes ok
+Suite local validada em 2026-07-19 com `npm test -- --runInBand`:
+- 15 suites ok
+- 86 testes ok
 
 Cobertura funcional atual:
 - `tests/core-schema.test.js`: shape canonico e defaults
@@ -185,6 +185,10 @@ Cobertura funcional atual:
 - `tests/core-audit.test.js`: metricas de auditoria
 - `tests/core-goals.test.js`: metas, filtros e catalogos
 - `tests/goals-controller.test.js`: controlador de metas
+- `tests/price-service.test.js`: polling e cache de preco por moeda
+- `tests/ui-chart-helpers.test.js`: dataset e detalhe dos alfinetes do grafico
+- `tests/ui-table-helpers.test.js`: formatacao do P&L por entrada
+- `tests/ui-audit-helpers.test.js`: helpers do painel de auditoria
 
 Observacao:
 - Ha um `console.error` esperado no teste de erro da migracao invalida; isso nao derruba a suite.
@@ -225,34 +229,23 @@ Observacao:
 - ZIP so deve ser gerado em milestone/snapshot estavel, nunca em microetapa.
 - Um ZIP de revisao tecnica deve representar estado validado, nao apenas estado salvo.
 
-## Proximo passo recomendado
-- Prioridade tecnica imediata: usar o processo oficial para quebrar `js/app.js` em modulos menores por dominio:
-  - `ui/form`
-  - `ui/table`
-  - `ui/chart`
-  - `ui/import-export`
-  - `ui/audit`
-  - `ui/goals`
-- Ordem oficial do refactor:
-  1. helpers
-  2. render
-  3. binders
-  4. `app-state`
-  5. `app.js` como orquestrador
-- Estado atual do M1:
-  - Etapa 1A (`ui/table/helpers`) encerrada no codigo atual.
-  - Etapa 2A (`ui/table/render`) encerrada.
-  - Etapa 3B (`ui/table/bind`) encerrada com smoke manual aprovado.
-- O Milestone M1 foi encerrado com o dominio de tabela/filtros separado em helpers, render e bind.
-- Estado atual do M2:
-  - Etapa 1B (`ui/import-export/helpers`) encerrada.
-  - Etapa 2B (`ui/import-export/render`) encerrada no codigo atual.
-  - Etapa 3C (`ui/import-export/bind`) encerrada no codigo atual.
-- O dominio de import/export agora esta separado em helpers, render e bind, mantendo parsing, canonizacao e atualizacao de estado no `js/app.js`.
-- O fechamento formal do M2 ainda depende de smoke manual curto do modal de exportacao/importacao.
-- O proximo marco recomendado apos o smoke do M2 e separar o painel de auditoria/TXID em `ui/audit/*`.
-- Prioridade funcional: continuar usando `strategy` e `tags` para insights, filtros rapidos e visualizacoes.
-- Prioridade de seguranca operacional: reforcar o fluxo de backup/export antes de migracoes ou imports destrutivos.
+## Marcos entregues
+- Engenharia E1-E5: modularizacao inicial, CI, lint/format, Husky e Definition of Done.
+- M1/M2: dominios de tabela, import/export e auditoria recortados em helpers, render e bind.
+- M3-B: dominio de metas em sats com `strategy`/`tags`, integrado pela PR #3.
+- M4-A: P&L por entrada, servico de preco e alfinetes no grafico; fechamento tecnico em `ff37d85`.
+- Design system: tokens semanticos, bridge de tokens para Chart.js, tipografia Geist, focus-visible e adaptacao mobile.
+- Hardening de entrega: Pages publica apenas `dist/` minimo (`98678a8`).
+- Higiene de testes: Jest ignora worktrees e artefactos locais (`1b123f0`).
+
+## Prioridades atuais
+1. Concluir o lote de seguranca runtime:
+   - SRI nos scripts CDN;
+   - extracao do script inline de navegacao;
+   - timeout/abort uniforme nos fetches;
+   - limite global no payload de importacao.
+2. Implementar a proxima feature de produto: target price line no grafico, conforme spec e plano aprovados.
+3. Continuar a reducao de `js/app.js` sem misturar esse refactor com features pequenas.
 
 ## Estado atual
 
@@ -270,5 +263,8 @@ Funcionalidades presentes no código (verificar com `git ls-files js/`):
 
 ## Próximo passo
 
-Próximo marco de produto: **M3-B** — separação do domínio de metas (goals).
-Aplicar o mesmo protocolo de recorte controlado com DoD em `docs/DEFINITION_OF_DONE.md`.
+Proximo trabalho tecnico: **lote de seguranca runtime**.
+
+Proximo marco de produto: **target price line**. A spec aprovada esta em
+`docs/superpowers/specs/2026-04-20-target-price-line-design.md` e o plano em
+`docs/superpowers/plans/2026-04-20-target-price-line.md`.
