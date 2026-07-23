@@ -247,7 +247,7 @@ Observacao:
 - Hardening de entrega: Pages publica apenas `dist/` minimo (`98678a8`).
 - Higiene de testes: Jest ignora worktrees e artefactos locais (`1b123f0`).
 - Seguranca runtime: SRI nos CDNs, navegacao sem script inline, fetch com timeout/abort e limites de importacao (`2551845`).
-- CSP base: scripts, fontes, rede e objetos restritos a origens explicitamente usadas; estilos inline permanecem como excecao temporaria.
+- CSP estrita: scripts, fontes, rede, objetos e estilos restritos a origens explicitamente usadas; atributos de estilo estaticos foram migrados para classes e `style-src-attr 'none'` esta ativo (`abfc326`).
 - Target price line: target USD efemero, update live/canonico, guard de moeda e layout mobile validado em 375 px.
 - Estabilidade OHLC: falhas de CoinGecko entram em cooldown com backoff e deixam o grafico de preco como fallback.
 - Refactor de grafico: helpers, datasets e opcoes vivem em `js/ui/chart/helpers.js`; a composicao em `js/ui/chart/config.js`; o crosshair em `js/ui/chart/crosshair.js`.
@@ -268,10 +268,9 @@ Observacao:
 - A nova Main Page so se torna a entrada padrao depois de paridade funcional e regressao desktop/mobile, storage, migracao, import/export, metas e preco.
 
 ## Prioridades atuais
-1. Concluir o lote CSP estrito ja aberto em `codex/csp-strict-styles`.
-2. Localizar/importar e inventariar o codigo-fonte do prototipo Main Page.
-3. Em paralelo ao inventario, caracterizar e extrair `computePortfolioSummary()` para `js/core/portfolio.js`.
-4. Criar o read model e integrar a Main Page incrementalmente, mantendo a interface atual como fallback ate haver paridade.
+1. Localizar/importar e inventariar o codigo-fonte do prototipo Main Page.
+2. Em paralelo ao inventario, caracterizar e extrair `computePortfolioSummary()` para `js/core/portfolio.js`.
+3. Criar o read model e integrar a Main Page incrementalmente, mantendo a interface atual como fallback ate haver paridade.
 
 Configuracao remota validada em 2026-07-19:
 - GitHub Pages usa build por Actions, HTTPS obrigatorio e publica apenas o `dist/` minimo.
@@ -295,6 +294,6 @@ Funcionalidades presentes no código (verificar com `git ls-files js/`):
 
 ## Próximo passo
 
-Proximo trabalho tecnico: concluir e integrar o lote de **CSP estrito**, removendo a excecao de estilos inline sem alterar comportamento visual.
+Proximo trabalho tecnico: localizar o codigo-fonte do prototipo Main Page e inventariar seu contrato visual. Em paralelo, `computePortfolioSummary()` pode ser caracterizado e extraido para `js/core/portfolio.js`.
 
-Depois da CSP, `computePortfolioSummary()` pode ser extraido em paralelo a localizacao do prototipo. "Implementacao da Main Page" significa `dashboard-model.js` e integracao visual; nao inclui essa extracao pura e independente em `js/core/portfolio.js`.
+"Implementacao da Main Page" significa `dashboard-model.js` e integracao visual; nao inclui essa extracao pura e independente em `js/core/portfolio.js`.
