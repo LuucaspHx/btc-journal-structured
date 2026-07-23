@@ -39,6 +39,7 @@ Fluxo basico que voce vai repetir:
 - `js/core/*` concentra regras puras de negocio:
   - `schema.js`: shape canonico da transacao e `SCHEMA_VERSION = 3`.
   - `calculations.js`: conversoes BTC/sats e preco medio.
+  - `portfolio.js`: agregado puro de sats, custo, preco medio, valor atual e P&L.
   - `validators.js`: validacao de formulario e ponte para sanitizacao de import.
   - `goals.js`: metas em sats, filtros por strategy/tags e catalogos.
   - `audit.js`: metricas de auditoria e prioridade por status.
@@ -120,6 +121,10 @@ Invariantes praticos:
   - calcula sats a partir de fiat/preco
   - converte sats para BTC
   - calcula preco medio com fee
+- `js/core/portfolio.js`
+  - calcula o resumo agregado de uma lista de entradas
+  - exclui posicoes fechadas e inclui fees no custo
+  - nao conhece DOM, filtros, storage ou formatacao
 - `js/core/validators.js`
   - valida payload do formulario
   - reexporta normalizacao/sanitizacao do import
@@ -172,14 +177,15 @@ Invariantes praticos:
   - mempool.space
 
 ## Testes existentes
-Suite local validada em 2026-07-23 com `npm test -- --runInBand`:
-- 19 suites ok
-- 117 testes ok
-- cobertura global: 19.56% de statements
+Suite local validada em 2026-07-24 com `npm test -- --runInBand`:
+- 21 suites ok
+- 128 testes ok
+- cobertura global: 20.94% de statements
 
 Cobertura funcional atual:
 - `tests/core-schema.test.js`: shape canonico e defaults
 - `tests/core-calculations.test.js`: sats/BTC/preco medio
+- `tests/core-portfolio.test.js`: agregado, fees, posicoes fechadas, P&L, filtros e microaportes
 - `tests/core-validators.test.js`: validacao e ponte de import
 - `tests/import-sanitizer.test.js`: sanitizacao de payloads importados
 - `tests/import-export-helpers.test.js`: helpers de import/export
@@ -196,6 +202,7 @@ Cobertura funcional atual:
 - `tests/ui-chart-config.test.js`: composicao da configuracao do Chart.js
 - `tests/ui-chart-crosshair.test.js`: plugin de crosshair
 - `tests/ui-table-helpers.test.js`: formatacao do P&L por entrada
+- `tests/ui-table-render-stats.test.js`: characterization do resumo visual existente
 - `tests/ui-audit-helpers.test.js`: helpers do painel de auditoria
 
 Observacao:
@@ -251,10 +258,11 @@ Observacao:
 - Target price line: target USD efemero, update live/canonico, guard de moeda e layout mobile validado em 375 px.
 - Estabilidade OHLC: falhas de CoinGecko entram em cooldown com backoff e deixam o grafico de preco como fallback.
 - Refactor de grafico: helpers, datasets e opcoes vivem em `js/ui/chart/helpers.js`; a composicao em `js/ui/chart/config.js`; o crosshair em `js/ui/chart/crosshair.js`.
+- Agregado de portfolio: `computePortfolioSummary()` vive em `js/core/portfolio.js`; o resumo atual consome o contrato puro sem alterar a semantica dos filtros (`4a98fe6`).
 
 ## Decisoes do ciclo Main Page
 - Estrategia de produto: nova UI sobre a engine client-side atual, sem segundo estado, storage, polling ou implementacao paralela de calculos.
-- O Codex e o executor canonico deste ciclo enquanto mantiver o diff CSP aberto. Claude Code e GPT atuam como revisores consultivos. Nao executar commits concorrentes no mesmo checkout.
+- O Codex e o executor canonico deste ciclo. Claude Code e GPT atuam como revisores consultivos. Nao executar commits concorrentes no mesmo checkout.
 - O resumo da Main Page representa sempre o portfolio completo e ignora os filtros da tabela de transacoes.
 - Calculos agregados de portfolio devem viver em `js/core/portfolio.js`; a composicao do read model da Main Page deve viver em `js/features/dashboard-model.js`.
 - `renderDashboardFromCurrentState()` sera o unico adaptador do estado atual para a Main Page. Deve ser chamado por `renderAll()`, pela atualizacao do `priceService` e pela subscription de metas.
@@ -264,13 +272,12 @@ Observacao:
 - O grafico da Main Page deve reutilizar cache, price service, helpers e configuracao atuais. Nao pode criar polling ou fetch paralelo. O inventario deve decidir explicitamente se a target price line efemera tambem aparece nesse grafico.
 - O codigo-fonte do prototipo Main Page ainda nao foi localizado no filesystem; apenas PDFs/documentos de referencia foram encontrados.
 - A ausencia do prototipo bloqueia `dashboard-model.js` definitivo e toda integracao visual, mas nao bloqueia a extracao pura de `computePortfolioSummary()` depois de a CSP estar resolvida.
-- Antes de extrair o agregado atual, criar characterization tests, incluindo carteira vazia, fees, posicoes fechadas, preco indisponivel, P&L positivo/negativo/zero, lista completa versus filtrada e 50+ pequenos aportes para observar drift numerico.
+- O agregado atual esta protegido por characterization tests para carteira vazia, fees, posicoes fechadas, preco indisponivel, P&L positivo/negativo/zero, lista completa versus filtrada e 50+ pequenos aportes.
 - A nova Main Page so se torna a entrada padrao depois de paridade funcional e regressao desktop/mobile, storage, migracao, import/export, metas e preco.
 
 ## Prioridades atuais
 1. Localizar/importar e inventariar o codigo-fonte do prototipo Main Page.
-2. Em paralelo ao inventario, caracterizar e extrair `computePortfolioSummary()` para `js/core/portfolio.js`.
-3. Criar o read model e integrar a Main Page incrementalmente, mantendo a interface atual como fallback ate haver paridade.
+2. Criar o read model e integrar a Main Page incrementalmente, mantendo a interface atual como fallback ate haver paridade.
 
 Configuracao remota validada em 2026-07-19:
 - GitHub Pages usa build por Actions, HTTPS obrigatorio e publica apenas o `dist/` minimo.
@@ -294,6 +301,4 @@ Funcionalidades presentes no código (verificar com `git ls-files js/`):
 
 ## Próximo passo
 
-Proximo trabalho tecnico: localizar o codigo-fonte do prototipo Main Page e inventariar seu contrato visual. Em paralelo, `computePortfolioSummary()` pode ser caracterizado e extraido para `js/core/portfolio.js`.
-
-"Implementacao da Main Page" significa `dashboard-model.js` e integracao visual; nao inclui essa extracao pura e independente em `js/core/portfolio.js`.
+Proximo trabalho tecnico: localizar o codigo-fonte do prototipo Main Page e inventariar seu contrato visual. `computePortfolioSummary()` e seus characterization tests ja estao prontos para alimentar o futuro read model.
