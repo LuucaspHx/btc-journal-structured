@@ -8,6 +8,7 @@ import {
   formatCurrentValue,
 } from './helpers.js';
 import { calcEntryPnL } from '../../core/calculations.js';
+import { computePortfolioSummary } from '../../core/portfolio.js';
 
 export function updateFiltersMeta({
   visibleCount = 0,
@@ -186,31 +187,18 @@ export function renderStats({
   if (!container) return;
 
   const txs = Array.isArray(list) ? list : [];
-  const openTxs = txs.filter((tx) => !tx?.closed);
-  const totalSats = openTxs.reduce((acc, tx) => acc + getTxSats(tx), 0);
-  const investedFiat = openTxs.reduce((acc, tx) => {
-    const fiat = getTxFiat(tx);
-    const fee = Number(tx.fee);
-    const safeFiat = Number.isFinite(fiat) ? fiat : 0;
-    const safeFee = Number.isFinite(fee) ? fee : 0;
-    return acc + safeFiat + safeFee;
-  }, 0);
-  const btcAmount = totalSats / 1e8;
-  const hasHoldings = btcAmount > 0;
-  const avgPrice = btcAmount > 0 ? investedFiat / btcAmount : 0;
-  const marketPrice = getLatestMarketPrice();
-  const currentValue =
-    marketPrice && hasHoldings ? marketPrice * btcAmount : hasHoldings ? null : 0;
-  const pnlAbs =
-    currentValue != null && hasHoldings ? currentValue - investedFiat : hasHoldings ? null : 0;
-  const pnlPct =
-    pnlAbs != null && hasHoldings && investedFiat > 0
-      ? (pnlAbs / investedFiat) * 100
-      : hasHoldings
-        ? null
-        : 0;
+  const summary = computePortfolioSummary(txs, getLatestMarketPrice());
+  const {
+    totalSats,
+    investedFiat,
+    averagePrice: avgPrice,
+    currentValue,
+    pnlValue: pnlAbs,
+    pnlPercent: pnlPct,
+    hasHoldings,
+    hasOpenPositions,
+  } = summary;
   const currency = currentFiatCurrency();
-  const hasOpenPositions = openTxs.length > 0;
   const zeroCurrency = fmtCurrency(0, currency);
   const zeroSignedCurrency = fmtSignedCurrency(0, currency);
   const zeroPercent = fmtPercent(0);
