@@ -172,9 +172,10 @@ Invariantes praticos:
   - mempool.space
 
 ## Testes existentes
-Suite local validada em 2026-07-19 com `npm test -- --runInBand`:
-- 17 suites ok
+Suite local validada em 2026-07-23 com `npm test -- --runInBand`:
+- 19 suites ok
 - 117 testes ok
+- cobertura global: 19.56% de statements
 
 Cobertura funcional atual:
 - `tests/core-schema.test.js`: shape canonico e defaults
@@ -192,6 +193,8 @@ Cobertura funcional atual:
 - `tests/http-service.test.js`: timeout, abort e propagacao de respostas HTTP
 - `tests/retry-policy.test.js`: backoff exponencial, cooldown e reinicio por request
 - `tests/ui-chart-helpers.test.js`: dataset/detalhe dos alfinetes e annotation de target price
+- `tests/ui-chart-config.test.js`: composicao da configuracao do Chart.js
+- `tests/ui-chart-crosshair.test.js`: plugin de crosshair
 - `tests/ui-table-helpers.test.js`: formatacao do P&L por entrada
 - `tests/ui-audit-helpers.test.js`: helpers do painel de auditoria
 
@@ -249,10 +252,26 @@ Observacao:
 - Estabilidade OHLC: falhas de CoinGecko entram em cooldown com backoff e deixam o grafico de preco como fallback.
 - Refactor de grafico: helpers, datasets e opcoes vivem em `js/ui/chart/helpers.js`; a composicao em `js/ui/chart/config.js`; o crosshair em `js/ui/chart/crosshair.js`.
 
+## Decisoes do ciclo Main Page
+- Estrategia de produto: nova UI sobre a engine client-side atual, sem segundo estado, storage, polling ou implementacao paralela de calculos.
+- O Codex e o executor canonico deste ciclo enquanto mantiver o diff CSP aberto. Claude Code e GPT atuam como revisores consultivos. Nao executar commits concorrentes no mesmo checkout.
+- O resumo da Main Page representa sempre o portfolio completo e ignora os filtros da tabela de transacoes.
+- Calculos agregados de portfolio devem viver em `js/core/portfolio.js`; a composicao do read model da Main Page deve viver em `js/features/dashboard-model.js`.
+- `renderDashboardFromCurrentState()` sera o unico adaptador do estado atual para a Main Page. Deve ser chamado por `renderAll()`, pela atualizacao do `priceService` e pela subscription de metas.
+- Quando a subscription de metas fornecer um `goalsSnapshot`, esse snapshot tem precedencia sobre a leitura interna de `goalsController.getSnapshot()`. O getter e apenas fallback quando nao houver override.
+- O atalho TXID da Main Page navega para Auditoria/Transacoes; nao expoe validacao individual sem uma transacao selecionada.
+- A navegacao programatica ainda precisa de um contrato publico em `js/ui/section-nav.js`; hoje `setActiveSection()` e privado do binder.
+- O grafico da Main Page deve reutilizar cache, price service, helpers e configuracao atuais. Nao pode criar polling ou fetch paralelo. O inventario deve decidir explicitamente se a target price line efemera tambem aparece nesse grafico.
+- O codigo-fonte do prototipo Main Page ainda nao foi localizado no filesystem; apenas PDFs/documentos de referencia foram encontrados.
+- A ausencia do prototipo bloqueia `dashboard-model.js` definitivo e toda integracao visual, mas nao bloqueia a extracao pura de `computePortfolioSummary()` depois de a CSP estar resolvida.
+- Antes de extrair o agregado atual, criar characterization tests, incluindo carteira vazia, fees, posicoes fechadas, preco indisponivel, P&L positivo/negativo/zero, lista completa versus filtrada e 50+ pequenos aportes para observar drift numerico.
+- A nova Main Page so se torna a entrada padrao depois de paridade funcional e regressao desktop/mobile, storage, migracao, import/export, metas e preco.
+
 ## Prioridades atuais
-1. Continuar a reducao de `js/app.js` sem misturar esse refactor com features pequenas.
-2. Migrar os estilos inline restantes para fechar a excecao `style-src 'unsafe-inline'` da CSP.
-3. Selecionar o proximo incremento de produto depois do trabalho de hardening/refactor.
+1. Concluir o lote CSP estrito ja aberto em `codex/csp-strict-styles`.
+2. Localizar/importar e inventariar o codigo-fonte do prototipo Main Page.
+3. Em paralelo ao inventario, caracterizar e extrair `computePortfolioSummary()` para `js/core/portfolio.js`.
+4. Criar o read model e integrar a Main Page incrementalmente, mantendo a interface atual como fallback ate haver paridade.
 
 Configuracao remota validada em 2026-07-19:
 - GitHub Pages usa build por Actions, HTTPS obrigatorio e publica apenas o `dist/` minimo.
@@ -276,6 +295,6 @@ Funcionalidades presentes no código (verificar com `git ls-files js/`):
 
 ## Próximo passo
 
-Proximo trabalho tecnico: **reducao controlada de `js/app.js`**, por dominio e com helpers puros primeiro. A CSP estrita continua como proxima frente de hardening apos essa etapa.
+Proximo trabalho tecnico: concluir e integrar o lote de **CSP estrito**, removendo a excecao de estilos inline sem alterar comportamento visual.
 
-O proximo marco de produto ainda nao foi selecionado.
+Depois da CSP, `computePortfolioSummary()` pode ser extraido em paralelo a localizacao do prototipo. "Implementacao da Main Page" significa `dashboard-model.js` e integracao visual; nao inclui essa extracao pura e independente em `js/core/portfolio.js`.
