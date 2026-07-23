@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://api.coingecko.com https://min-api.cryptocompare.com https://api.coindesk.com https://mempool.space; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src 'none'"
+      content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net; style-src 'self' https://fonts.googleapis.com; style-src-elem 'self' https://fonts.googleapis.com; style-src-attr 'none'; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://api.coingecko.com https://min-api.cryptocompare.com https://api.coindesk.com https://mempool.space; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src 'none'"
     />
     <meta name="referrer" content="strict-origin-when-cross-origin" />
     <title>BTC Journal — Esqueleto</title>
@@ -79,16 +79,16 @@
     </nav>
 
     <div id="messageContainer" class="message-container" aria-live="polite"></div>
-    <div id="confirmModal" class="confirm-modal" role="dialog" aria-modal="true" style="display:none;">
+    <div id="confirmModal" class="confirm-modal is-initially-hidden" role="dialog" aria-modal="true">
       <div class="confirm-modal-content">
         <div id="confirmModalMessage" class="confirm-modal-message"></div>
-        <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:12px;">
+        <div class="confirm-modal-actions">
           <button id="confirmCancelBtn" class="ghost">Cancelar</button>
           <button id="confirmOkBtn" class="primary">Confirmar</button>
         </div>
       </div>
     </div>
-    <div id="exportModal" class="modal export-modal" role="dialog" aria-modal="true" style="display:none;">
+    <div id="exportModal" class="modal export-modal is-initially-hidden" role="dialog" aria-modal="true">
       <div class="modal-content export-modal-content">
         <div class="export-modal-head">
           <h2>Exportar JSON</h2>
@@ -96,7 +96,7 @@
         </div>
         <p id="exportMeta" class="muted">Pré-visualização do backup local. Antes de importar, gere um JSON ou CSV e guarde em local seguro.</p>
         <textarea id="exportPreview" readonly spellcheck="false"></textarea>
-        <div class="muted" style="font-size:12px; line-height:1.5;">
+        <div class="muted support-copy">
           Dica: mantemos cópias locais antes de cada importação, mas recomendo baixar um backup manual periodicamente.
         </div>
         <div class="modal-actions">
@@ -106,23 +106,23 @@
         </div>
       </div>
     </div>
-    <div id="importModal" class="modal import-modal" role="dialog" aria-modal="true" style="display:none;">
+    <div id="importModal" class="modal import-modal is-initially-hidden" role="dialog" aria-modal="true">
       <div class="modal-content import-modal-content">
         <div class="import-modal-head">
           <h2>Pré-visualizar importação</h2>
           <button id="importCloseBtn" type="button" class="ghost">Fechar</button>
         </div>
-        <div id="importSummary" class="muted" style="margin-bottom:8px;">Nenhum arquivo carregado.</div>
-        <div id="importPreviewList" class="import-preview" style="max-height:240px; overflow:auto;"></div>
-        <div id="importInvalidHint" class="note" style="margin-top:8px;"></div>
-        <div class="modal-actions" style="margin-top:12px;">
+        <div id="importSummary" class="muted import-summary">Nenhum arquivo carregado.</div>
+        <div id="importPreviewList" class="import-preview"></div>
+        <div id="importInvalidHint" class="note spaced-note"></div>
+        <div class="modal-actions modal-actions-spaced">
           <button id="importCancelBtn" type="button" class="ghost">Cancelar</button>
           <button id="importApplyBtn" type="button" class="primary">Aplicar</button>
         </div>
       </div>
     </div>
 
-    <div id="goalModal" class="modal goal-modal" role="dialog" aria-modal="true" style="display:none;">
+    <div id="goalModal" class="modal goal-modal is-initially-hidden" role="dialog" aria-modal="true">
       <div class="modal-content goal-modal-content">
         <div class="goal-modal-head">
           <h2 id="goalModalTitle">Nova meta</h2>
@@ -178,8 +178,8 @@
             <div class="goal-preview" id="goalPreview">Selecione um alvo ou preencha os campos para ver o preview.</div>
           </section>
           <div class="goal-form-actions">
-            <button id="goalDeleteBtn" type="button" class="ghost" style="display:none;">Remover meta</button>
-            <div style="margin-left:auto; display:flex; gap:8px;">
+            <button id="goalDeleteBtn" type="button" class="ghost is-initially-hidden">Remover meta</button>
+            <div class="goal-form-secondary-actions">
               <button id="goalCancelBtn" type="button" class="ghost">Cancelar</button>
               <button id="goalSubmitBtn" type="submit" class="primary">Salvar meta</button>
             </div>
@@ -188,15 +188,15 @@
       </div>
     </div>
 
-  <section id="liveChartSection" class="live-chart expanded glass-card glass-strong" aria-hidden="true" data-live-disabled="true" style="display:none;">
+  <section id="liveChartSection" class="live-chart expanded glass-card glass-strong is-initially-hidden" aria-hidden="true" data-live-disabled="true">
       <div class="live-chart-inner card">
         <button id="liveChartToggleBtn" class="btn ghost live-toggle" aria-expanded="true">⬇ Recolher gráfico</button>
         <div class="live-chart-body"><canvas id="liveBtcChart"></canvas></div>
-        <div id="liveChartStatus" class="muted" style="font-size:12px;margin-top:8px;">—</div>
+        <div id="liveChartStatus" class="muted live-chart-status">—</div>
       </div>
   </section>
 
-    <div id="chartGlassOverlay" class="chart-glass" aria-hidden="true" style="display:none;">
+    <div id="chartGlassOverlay" class="chart-glass" aria-hidden="true">
       <div class="chart-glass-inner">
         <button id="closeChartGlassBtn" class="btn ghost">Fechar</button>
         <div class="chart-glass-body"><canvas id="glassBtcChart"></canvas></div>
@@ -206,7 +206,7 @@
     <div class="wrap">
       <aside class="sidebar">
         <div class="card stack glass-card section-panel" id="summarySection" data-section-panel="summary">
-          <div style="font-weight:800;">Resumo</div>
+          <div class="section-heading">Resumo</div>
           <div id="stats" class="kpiBar">
             <div class="kpi">
               <div class="label">Total investido</div>
@@ -243,7 +243,7 @@
 
         <div class="card stack glass-card section-panel" id="filtersCard" data-section-panel="transactions">
           <div id="filtersSection" class="section-anchor" aria-hidden="true"></div>
-          <div style="font-weight:800;">Filtros de transações</div>
+          <div class="section-heading">Filtros de transações</div>
           <form id="filters-form" class="stack" autocomplete="off">
             <div class="row">
               <div class="stack">
@@ -300,8 +300,8 @@
                 </div>
               </div>
             </div>
-            <div style="display:flex; gap:8px;">
-              <button type="button" id="filters-reset" class="ghost" style="flex:1;">Limpar filtros</button>
+            <div class="filter-reset-row">
+              <button type="button" id="filters-reset" class="ghost full-width-control">Limpar filtros</button>
             </div>
           </form>
           <div id="filtersMeta" class="filters-meta" aria-live="polite">
@@ -314,9 +314,9 @@
         <form id="tx-form" class="section-panel" data-section-panel="entry">
           <div id="entrySection" class="section-anchor" aria-hidden="true"></div>
           <div class="card stack glass-card">
-            <div style="display:flex; align-items:center; justify-content:space-between;">
+            <div class="panel-heading-row">
               <div>
-                <div style="font-weight:800;">Novo aporte</div>
+                <div class="section-heading">Novo aporte</div>
                 <div class="note">Guarda localmente no seu navegador</div>
               </div>
               <button id="fetchPriceBtn" type="button" class="ghost" title="Pegar preço do dia pelo CoinGecko">Buscar preço do dia</button>
@@ -366,8 +366,8 @@
             <div class="tx-actions-row">
               <div class="tx-actions-buttons">
                 <button id="tx-add" type="submit" class="primary">Adicionar</button>
-                <button id="tx-cancel-edit" type="button" class="ghost" style="display:none;">Cancelar</button>
-                <button id="tx-delete-edit" type="button" class="danger" style="display:none;">Apagar</button>
+                <button id="tx-cancel-edit" type="button" class="ghost is-initially-hidden">Cancelar</button>
+                <button id="tx-delete-edit" type="button" class="danger is-initially-hidden">Apagar</button>
               </div>
               <div id="tx-error" class="muted" role="status" aria-live="polite"></div>
             </div>
@@ -395,27 +395,27 @@
               </span>
             </div>
           </div>
-          <div id="chartContainer" style="height:320px; margin-top:8px;">
+          <div id="chartContainer" class="chart-container-frame">
             <canvas id="btcChart"></canvas>
             <div id="chartEmptyState" class="chart-empty-state" hidden></div>
           </div>
-          <div id="chartLegend" class="note" style="margin-top:6px; font-size:12px;">—</div>
+          <div id="chartLegend" class="note chart-legend-note">—</div>
         </div>
 
-        <div id="monthsContainer" class="card section-panel" data-section-panel="entry" style="margin-top:8px;">
-          <div style="font-weight:800;">Aportes</div>
-          <div id="monthsGrid" style="display:grid; gap:8px; margin-top:8px;"></div>
+        <div id="monthsContainer" class="card section-panel section-spaced" data-section-panel="entry">
+          <div class="section-heading">Aportes</div>
+          <div id="monthsGrid" class="months-grid"></div>
         </div>
       </aside>
 
-      <main style="display:grid; gap:12px; align-content:start;">
+      <main class="content-main">
         <div id="transactionsCard" class="card section-panel" data-section-panel="transactions">
           <div id="transactionsSection" class="section-anchor" aria-hidden="true"></div>
-          <div style="display:flex; align-items:center; justify-content:space-between;">
-            <div style="font-weight:800;">Transações</div>
-            <div id="transactionsMeta" class="muted" style="font-size:12px;">—</div>
+          <div class="panel-heading-row">
+            <div class="section-heading">Transações</div>
+            <div id="transactionsMeta" class="muted text-caption">—</div>
           </div>
-          <table style="width:100%;border-collapse:collapse;margin-top:8px;">
+          <table class="transactions-table">
             <thead><tr><th>Data</th><th>Sats</th><th>Preço</th><th>P&L</th><th>Status</th><th>Classificação</th><th>Nota</th><th></th></tr></thead>
             <tbody id="tx-body"></tbody>
           </table>
@@ -423,14 +423,14 @@
 
         <div id="auditCard" class="card section-panel" data-section-panel="audit">
           <div id="auditSection" class="section-anchor" aria-hidden="true"></div>
-          <div style="display:flex; align-items:flex-start; justify-content:space-between; gap:12px;">
+          <div class="audit-panel-head">
             <div>
-              <div style="font-weight:800;">Modo auditoria / Proof Ledger</div>
-              <div class="muted" style="font-size:12px;">Resumo da comprovação dos aportes (dados on-chain vs declarados)</div>
+              <div class="section-heading">Modo auditoria / Proof Ledger</div>
+              <div class="muted text-caption">Resumo da comprovação dos aportes (dados on-chain vs declarados)</div>
             </div>
-            <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
-              <button id="auditValidateBtn" type="button" class="ghost" style="font-size:12px; padding:6px 10px;">Validar pendentes</button>
-              <div id="auditMeta" class="muted" style="font-size:12px;">—</div>
+            <div class="audit-panel-actions">
+              <button id="auditValidateBtn" type="button" class="ghost compact-control">Validar pendentes</button>
+              <div id="auditMeta" class="muted text-caption">—</div>
             </div>
           </div>
           <div id="auditSummary" class="audit-summary">—</div>
@@ -464,7 +464,7 @@
             </tbody>
           </table>
           <div class="audit-footer">
-            <button id="auditShowMoreBtn" type="button" class="ghost small" style="display:none;">Mostrar mais</button>
+            <button id="auditShowMoreBtn" type="button" class="ghost small is-initially-hidden">Mostrar mais</button>
           </div>
         </div>
 
@@ -472,8 +472,8 @@
           <div id="goalsSection" class="section-anchor" aria-hidden="true"></div>
           <div class="goals-head">
             <div>
-              <div style="font-weight:800;">Metas em sats</div>
-              <div class="muted" style="font-size:12px;">Defina alvos e veja quais aportes contam para cada meta.</div>
+              <div class="section-heading">Metas em sats</div>
+              <div class="muted text-caption">Defina alvos e veja quais aportes contam para cada meta.</div>
             </div>
             <div class="goals-head-actions">
               <button id="goalsNewBtn" type="button" class="primary small">Nova meta</button>
@@ -481,7 +481,7 @@
           </div>
           <div id="goalsEmptyState" class="goals-empty">Nenhuma meta cadastrada. Clique em “Nova meta” para começar.</div>
           <div id="goalsList" class="goals-list" role="list"></div>
-          <div id="goalsDetail" class="goals-detail" style="display:none;">
+          <div id="goalsDetail" class="goals-detail is-initially-hidden">
             <div class="goals-detail-head">
               <div>
                 <div id="goalDetailTitle" class="goals-detail-title">Selecione uma meta</div>
@@ -515,10 +515,10 @@
     </div>
     <script type="module" src="./js/app.js"></script>
     <!-- Liquid Glass: defs globais -->
-    <footer style="padding:12px 20px; display:flex; justify-content:center; gap:12px; align-items:center;">
+    <footer class="site-footer">
       <button id="btn-export" class="ghost">Exportar JSON</button>
       <button id="btn-export-csv" class="ghost">Exportar CSV</button>
-      <label class="ghost" for="file-import" style="cursor:pointer; display:flex; align-items:center; gap:8px;">Importar JSON
+      <label class="ghost import-trigger" for="file-import">Importar JSON
         <input id="file-import" type="file" accept="application/json,.json,.txt" hidden />
       </label>
     </footer>
