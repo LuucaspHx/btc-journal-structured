@@ -260,11 +260,21 @@ Observacao:
 - Refactor de grafico: helpers, datasets e opcoes vivem em `js/ui/chart/helpers.js`; a composicao em `js/ui/chart/config.js`; o crosshair em `js/ui/chart/crosshair.js`.
 - Agregado de portfolio: `computePortfolioSummary()` vive em `js/core/portfolio.js`; o resumo atual consome o contrato puro sem alterar a semantica dos filtros (`4a98fe6`).
 
+## Contrato P&L observado
+- `calcEntryPnL()` calcula o P&L por entrada com `fiatAmount`/`fiat` como custo e nao inclui `fee`.
+- Para fees positivas, `pmMedio()` e `computePortfolioSummary()` tratam `fee` como custo adicional (`fiat + fee`) no preco medio e no P&L agregado.
+- Fees negativas sao aceitas pela validacao; `pmMedio()` aplica clamp em zero, enquanto `computePortfolioSummary()` reduz o custo agregado.
+- `normalizeEntry()` preserva os sats informados; quando um import nao fornece sats, deriva-os por `(fiat - fee) / price` e aplica `Math.floor` em sats.
+- A derivacao por fiat pode perder 1 sat por representacao binaria antes do `Math.floor` (por exemplo, 90 unidades fiat a um preco de 10.000 por BTC resultam atualmente em 899.999 sats, nao 900.000).
+- Quando uma entrada so fornece `btcAmount`, `computePortfolioSummary()` converte e aplica `Math.floor` por entrada antes de somar os sats.
+- Estes comportamentos preexistentes nao formam uma semantica unica de fee. O lote de caracterizacao documenta a divergencia sem alterar runtime.
+
 ## Decisoes do ciclo Main Page
 - Estrategia de produto: nova UI sobre a engine client-side atual, sem segundo estado, storage, polling ou implementacao paralela de calculos.
 - O Codex e o executor canonico deste ciclo. Claude Code e GPT atuam como revisores consultivos. Nao executar commits concorrentes no mesmo checkout.
 - O resumo da Main Page representa sempre o portfolio completo e ignora os filtros da tabela de transacoes.
 - Calculos agregados de portfolio devem viver em `js/core/portfolio.js`; a composicao do read model da Main Page deve viver em `js/features/dashboard-model.js`.
+- `dashboard-model.js` nao deve reinterpretar nem normalizar fee ate existir uma decisao de produto explicita sobre se `fiat` representa aporte bruto, custo liquido ou custo antes da fee, e se fee negativa representa rebate ou entrada invalida.
 - `renderDashboardFromCurrentState()` sera o unico adaptador do estado atual para a Main Page. Deve ser chamado por `renderAll()`, pela atualizacao do `priceService` e pela subscription de metas.
 - Quando a subscription de metas fornecer um `goalsSnapshot`, esse snapshot tem precedencia sobre a leitura interna de `goalsController.getSnapshot()`. O getter e apenas fallback quando nao houver override.
 - O atalho TXID da Main Page navega para Auditoria/Transacoes; nao expoe validacao individual sem uma transacao selecionada.
@@ -272,7 +282,7 @@ Observacao:
 - O grafico da Main Page deve reutilizar cache, price service, helpers e configuracao atuais. Nao pode criar polling ou fetch paralelo. O inventario deve decidir explicitamente se a target price line efemera tambem aparece nesse grafico.
 - O codigo-fonte do prototipo Main Page ainda nao foi localizado no filesystem; apenas PDFs/documentos de referencia foram encontrados.
 - A ausencia do prototipo bloqueia `dashboard-model.js` definitivo e toda integracao visual, mas nao bloqueia a extracao pura de `computePortfolioSummary()` depois de a CSP estar resolvida.
-- O agregado atual esta protegido por characterization tests para carteira vazia, fees, posicoes fechadas, preco indisponivel, P&L positivo/negativo/zero, lista completa versus filtrada e 50+ pequenos aportes.
+- O agregado atual esta protegido por characterization tests para carteira vazia, fees, posicoes fechadas, preco indisponivel, P&L positivo/negativo/zero, lista completa versus filtrada e 64 microaportes convertidos de BTC para sats com floor por entrada.
 - A nova Main Page so se torna a entrada padrao depois de paridade funcional e regressao desktop/mobile, storage, migracao, import/export, metas e preco.
 
 ## Prioridades atuais
