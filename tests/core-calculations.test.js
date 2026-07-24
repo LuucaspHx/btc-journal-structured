@@ -21,9 +21,24 @@ describe('core/calculations', () => {
     const totalBtc = (2e7 + 1e7) / 1e8;
     expect(avg).toBeCloseTo(totalFiat / totalBtc);
   });
+
+  test('pmMedio trata fee negativa como zero', () => {
+    const avg = pmMedio([{ fiatAmount: 100, fee: -5, sats: 10_000_000 }]);
+
+    expect(avg).toBeCloseTo(1_000);
+  });
 });
 
 describe('calcEntryPnL', () => {
+  test('preserva o contrato atual por linha: fee nao integra o custo do P&L', () => {
+    const entry = { sats: 100000, fiatAmount: 80, fee: 2 };
+    const result = calcEntryPnL(entry, 100000);
+
+    expect(result.currentValue).toBeCloseTo(100);
+    expect(result.pnlValue).toBeCloseTo(20);
+    expect(result.pnlPct).toBeCloseTo(25);
+  });
+
   test('retorna isProfit true quando valor atual > custo', () => {
     const entry = { sats: 100000, fiatAmount: 80 };
     const result = calcEntryPnL(entry, 100000);

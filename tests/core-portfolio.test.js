@@ -53,6 +53,28 @@ describe('computePortfolioSummary', () => {
     expect(result.averagePrice).toBe(82_000);
   });
 
+  test('preserva o contrato agregado atual: fee integra o custo do P&L', () => {
+    const result = computePortfolioSummary(
+      [{ sats: 100_000, fiatAmount: 80, fee: 2 }],
+      100_000
+    );
+
+    expect(result.investedFiat).toBe(82);
+    expect(result.currentValue).toBeCloseTo(100);
+    expect(result.pnlValue).toBeCloseTo(18);
+    expect(result.pnlPercent).toBeCloseTo((18 / 82) * 100);
+  });
+
+  test('preserva fee negativa como reducao do custo agregado', () => {
+    const result = computePortfolioSummary(
+      [{ sats: 100_000, fiatAmount: 80, fee: -2 }],
+      100_000
+    );
+
+    expect(result.investedFiat).toBe(78);
+    expect(result.pnlValue).toBeCloseTo(22);
+  });
+
   test('retorna o contrato vazio e o fallback de posicao aberta sem sats', () => {
     expect(computePortfolioSummary([])).toEqual({
       entryCount: 0,
@@ -88,17 +110,17 @@ describe('computePortfolioSummary', () => {
     expect(computePortfolioSummary(entries.slice(0, 1), 100_000).totalSats).toBe(100_000);
   });
 
-  test('acumula muitos aportes pequenos sem drift nos sats', () => {
-    const entries = Array.from({ length: 60 }, () => ({
-      sats: 1_001,
+  test('aplica floor por entrada em 64 microaportes btcAmount sem drift nos sats', () => {
+    const entries = Array.from({ length: 64 }, () => ({
+      btcAmount: 1_001.9 / 1e8,
       fiatAmount: 0.37,
       fee: 0.01,
     }));
     const result = computePortfolioSummary(entries, 75_000);
 
-    expect(result.totalSats).toBe(60_060);
-    expect(result.btcAmount).toBe(0.0006006);
-    expect(result.investedFiat).toBeCloseTo(22.8, 12);
-    expect(result.currentValue).toBeCloseTo(45.045, 12);
+    expect(result.totalSats).toBe(64_064);
+    expect(result.btcAmount).toBe(0.00064064);
+    expect(result.investedFiat).toBeCloseTo(24.32, 12);
+    expect(result.currentValue).toBeCloseTo(48.048, 12);
   });
 });

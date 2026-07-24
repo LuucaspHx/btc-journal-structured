@@ -18,6 +18,18 @@ describe('core/validators', () => {
     expect(result.errors.length).toBeGreaterThan(0);
   });
 
+  test('validateTransaction preserva fee negativa finita', () => {
+    const result = validateTransaction({
+      date: '2025-01-01',
+      sats: 10_000,
+      price: 100_000,
+      fiat: 10,
+      fee: -1
+    });
+
+    expect(result.ok).toBe(true);
+  });
+
   test('normalizeEntry e sanitizeImportPayload são propagados', () => {
     const entry = normalizeEntry({ date: '2025-03-01', price: 30000, fiat: 150 });
     expect(entry).not.toBeNull();

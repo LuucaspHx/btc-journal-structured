@@ -18,6 +18,16 @@ describe('import-sanitizer', () => {
     expect(n.sats).toBeGreaterThan(0);
   });
 
+  test('normalizeEntry preserva o floor atual ao derivar sats pelo fiat liquido', () => {
+    const raw = { date: '2025-01-15', price: 10_000, fiat: 100, fee: 10 };
+    const n = normalizeEntry(raw);
+
+    // A aritmetica binaria produz 899999.999... antes do floor.
+    expect(n.sats).toBe(899_999);
+    expect(n.fiat).toBe(100);
+    expect(n.fee).toBe(10);
+  });
+
   test('normalizeEntry - invalid price', () => {
     const raw = { date: '2025-01-15', price: 'abc', fiat: 100 };
     const n = normalizeEntry(raw);
