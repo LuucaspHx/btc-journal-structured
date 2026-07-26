@@ -778,7 +778,19 @@ h1, h2, h3, h4 {
 .section-spaced { margin-top: 8px; }
 .months-grid { display: grid; gap: 8px; margin-top: 8px; }
 .content-main { display: grid; gap: 12px; align-content: start; }
+.content-main,
+.content-main > *,
+.sidebar > * {
+  min-width: 0;
+}
 .text-caption { font-size: 12px; }
+.table-scroll-region {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  -webkit-overflow-scrolling: touch;
+}
 .transactions-table { width: 100%; border-collapse: collapse; margin-top: 8px; }
 .audit-panel-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .audit-panel-actions { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
@@ -810,6 +822,20 @@ h1, h2, h3, h4 {
   /* iOS zoom prevention: inputs/selects < 16px trigger browser auto-zoom on focus */
   select, input, textarea {
     font-size: 16px;
+  }
+
+  button,
+  select,
+  textarea,
+  input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+  summary,
+  .import-trigger {
+    min-height: 44px;
+  }
+  button,
+  summary,
+  .import-trigger {
+    min-width: 44px;
   }
 
   /* Grid tracks default to min-width: auto and can push dense panels past the viewport. */
@@ -888,7 +914,19 @@ h1, h2, h3, h4 {
 
   /* Audit filter pills: larger touch targets */
   .audit-filters button {
-    min-height: 36px;
+    min-height: 44px;
     padding: 8px 12px;
+  }
+
+  .panel-heading-row,
+  .audit-panel-head,
+  .goals-head,
+  .goals-detail-head,
+  .site-footer {
+    flex-wrap: wrap;
+  }
+  .tx-actions-buttons,
+  .filters-meta {
+    flex-wrap: wrap;
   }
 }
