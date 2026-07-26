@@ -25,7 +25,7 @@ Responsabilidade: estrutura da SPA, IDs consumidos pelos binders, tokens semanti
 
 - `js/app.js`
 
-Responsabilidade: boot, estado em memoria, persistencia, lifecycle do Chart.js e coordenacao entre modulos. Com 3458 linhas, continua sendo o principal hotspot; novos dominios nao devem ser implementados diretamente nele quando puderem entrar por contratos testaveis.
+Responsabilidade: boot, estado em memoria, persistencia, lifecycle do Chart.js e coordenacao entre modulos. Continua sendo o principal hotspot; novos dominios nao devem ser implementados diretamente nele quando puderem entrar por contratos testaveis.
 
 ### Dominio puro
 
@@ -41,9 +41,10 @@ Regra: sem DOM, fetch ou `localStorage`. `computePortfolioSummary()` e o contrat
 ### Controladores e read models de feature
 
 - `js/features/goals-controller.js`
+- `js/features/app-commands.js`
 - futuro `js/features/dashboard-model.js`
 
-Responsabilidade: compor snapshots e regras puras para consumo da UI. Nao cria um segundo store; recebe o estado canonico e devolve modelos derivados.
+Responsabilidade: compor snapshots, comandos e regras puras para consumo da UI. Nao cria um segundo store; recebe dependencias do composition root e devolve contratos derivados. O registry de comandos permanece local a `boot()` e deve ser injetado nos binders consumidores.
 
 ### Infraestrutura
 
@@ -88,7 +89,7 @@ Padrao: `helpers` mantem logica pura, `render` escreve no DOM, `bind` registra e
 ## Qualidade e entrega
 
 - Jest cobre dominio, storage, services e helpers: `npm test`.
-- Playwright executa a SPA real em seis viewports: `npm run test:e2e`.
+- Playwright executa a SPA real em seis viewports e valida o wiring canonico de exportacao: `npm run test:e2e`.
 - O smoke responsivo verifica todas as secoes, overflow global, erros de runtime e alvos tacteis em mobile.
 - O CI instala Chromium e executa Jest + Playwright.
 - O deploy de Pages publica apenas o `dist/` minimo.

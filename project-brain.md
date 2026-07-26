@@ -178,11 +178,11 @@ Invariantes praticos:
 
 ## Testes existentes
 Suite local validada em 2026-07-26 com `npm test -- --runInBand`:
-- 22 suites ok
-- 138 testes ok
+- 23 suites ok
+- 145 testes ok
 
 Baseline responsiva validada com `npm run test:e2e`:
-- 6 viewports em Chromium: 320x720, 390x844, 768x1024, 844x390, 1024x768 e 1440x900
+- 7 testes em Chromium: seis viewports (320x720, 390x844, 768x1024, 844x390, 1024x768 e 1440x900) e wiring real do comando de exportacao
 - todas as secoes sem overflow global ou erros de runtime
 - controlos visiveis em 320/390 com alvo minimo de 44x44 px
 - CoinGecko isolado por fixtures deterministicas no teste
@@ -209,6 +209,7 @@ Cobertura funcional atual:
 - `tests/ui-table-helpers.test.js`: formatacao do P&L por entrada
 - `tests/ui-table-render-stats.test.js`: characterization do resumo visual existente
 - `tests/ui-audit-helpers.test.js`: helpers do painel de auditoria
+- `tests/app-commands.test.js`: registry partilhado de comandos, delegacao e falhas seguras
 - `tests/e2e/responsive.spec.js`: smoke real da SPA em desktop, tablet e mobile
 
 Observacao:
@@ -290,7 +291,7 @@ Observacao:
 ## Roadmap desktop + mobile
 - F0 — baseline responsiva e gate E2E: concluido.
 - F1 — localizar/inventariar o prototipo da Main Page e fechar decisoes pendentes de produto, incluindo semantica de fees no dashboard.
-- F2a — em curso: navegacao compartilhada exposta; faltam os demais comandos e a reducao controlada do acoplamento da composition root.
+- F2a — concluido: navegacao programatica e registry de comandos partilhados expostos por contratos testaveis, sem estado global.
 - F2b — criar `js/features/dashboard-model.js` sobre `computePortfolioSummary()` e snapshots existentes.
 - F3 — montar uma primeira fatia vertical da Main Page com desktop e mobile no mesmo PR.
 - F4 — ligar atalhos e comandos existentes; nenhum fluxo paralelo de mutacao.
@@ -299,6 +300,7 @@ Observacao:
 - F7 — regressao funcional, acessibilidade, performance e matriz responsiva completa.
 - F8 — tornar a Main Page padrao apenas depois de paridade e remover fallback legado de forma controlada.
 - A navegacao programatica usa `activateSection()` como contrato publico; o binder e futuros atalhos devem delegar a essa mesma API.
+- `createAppCommands()` cria o registry dentro de `boot()`. A futura UI recebe essa instancia por injecao no binder; o registry nao deve ser publicado em `window` nem convertido num segundo store global.
 - O grafico da Main Page deve reutilizar cache, price service, helpers e configuracao atuais. Nao pode criar polling ou fetch paralelo. O inventario deve decidir explicitamente se a target price line efemera tambem aparece nesse grafico.
 - O codigo-fonte do prototipo Main Page ainda nao foi localizado no filesystem; apenas PDFs/documentos de referencia foram encontrados.
 - A ausencia do prototipo bloqueia `dashboard-model.js` definitivo e toda integracao visual, mas nao bloqueia a extracao pura de `computePortfolioSummary()` depois de a CSP estar resolvida.
@@ -331,4 +333,4 @@ Funcionalidades presentes no código (verificar com `git ls-files js/`):
 
 ## Próximo passo
 
-Proximo trabalho tecnico independente do prototipo: inventariar e expor os comandos existentes que a Main Page consumira, sem criar mutacoes paralelas. Em paralelo, localizar o codigo-fonte do prototipo para desbloquear o read model e a integracao visual.
+Localizar o codigo-fonte do prototipo e fechar a semantica de fees para desbloquear `dashboard-model.js` e a integracao visual. Enquanto isso, apenas extracoes independentes, caracterizadas e sem aumento de acoplamento podem avancar.
