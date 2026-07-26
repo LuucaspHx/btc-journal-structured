@@ -15,6 +15,7 @@ Nenhum milestone fecha por declaração. Fecha por evidência — output real de
 - [ ] Código commitado no repo canónico
 - [ ] `project-brain.md` atualizado apenas nas seções de decisões/contexto
 - [ ] Smoke manual documentado (se aplicável)
+- [ ] `npm run test:e2e` verde quando HTML, CSS, navegação, layout ou renderização visível mudarem
 
 ## DoD — Milestone de Engenharia (E*)
 
@@ -28,6 +29,7 @@ Nenhum milestone fecha por declaração. Fecha por evidência — output real de
 - [ ] CI "Tests" verde no GitHub
 - [ ] Sem ficheiros não intencionais no diff
 - [ ] `project-brain.md` atualizado se decisões arquiteturais mudaram
+- [ ] Matriz Playwright verde quando o PR alterar uma superfície visual
 
 ---
 

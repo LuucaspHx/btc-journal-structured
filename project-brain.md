@@ -177,10 +177,15 @@ Invariantes praticos:
   - mempool.space
 
 ## Testes existentes
-Suite local validada em 2026-07-24 com `npm test -- --runInBand`:
+Suite local validada em 2026-07-26 com `npm test -- --runInBand`:
 - 21 suites ok
-- 128 testes ok
-- cobertura global: 20.94% de statements
+- 134 testes ok
+
+Baseline responsiva validada com `npm run test:e2e`:
+- 6 viewports em Chromium: 320x720, 390x844, 768x1024, 844x390, 1024x768 e 1440x900
+- todas as secoes sem overflow global ou erros de runtime
+- controlos visiveis em 320/390 com alvo minimo de 44x44 px
+- CoinGecko isolado por fixtures deterministicas no teste
 
 Cobertura funcional atual:
 - `tests/core-schema.test.js`: shape canonico e defaults
@@ -204,6 +209,7 @@ Cobertura funcional atual:
 - `tests/ui-table-helpers.test.js`: formatacao do P&L por entrada
 - `tests/ui-table-render-stats.test.js`: characterization do resumo visual existente
 - `tests/ui-audit-helpers.test.js`: helpers do painel de auditoria
+- `tests/e2e/responsive.spec.js`: smoke real da SPA em desktop, tablet e mobile
 
 Observacao:
 - Ha um `console.error` esperado no teste de erro da migracao invalida; isso nao derruba a suite.
@@ -221,6 +227,7 @@ Observacao:
 - Antes de mexer em importacao, revisar tambem `sanitizeImportPayload()`, `normalizeImportShape()` e `migrateV1ToV3()`.
 - Antes de mexer em TXID/auditoria, revisar `validateTxidEntry()` e `computeAuditMetrics()`.
 - Rodar `npm test` a cada rodada relevante.
+- Rodar `npm run test:e2e` quando o diff tocar HTML, CSS, navegacao, layout ou renderizacao visivel.
 - Para validar a UI localmente: `python3 -m http.server 8000` e abrir `http://localhost:8000`.
 
 ## Processo oficial
@@ -259,6 +266,7 @@ Observacao:
 - Estabilidade OHLC: falhas de CoinGecko entram em cooldown com backoff e deixam o grafico de preco como fallback.
 - Refactor de grafico: helpers, datasets e opcoes vivem em `js/ui/chart/helpers.js`; a composicao em `js/ui/chart/config.js`; o crosshair em `js/ui/chart/crosshair.js`.
 - Agregado de portfolio: `computePortfolioSummary()` vive em `js/core/portfolio.js`; o resumo atual consome o contrato puro sem alterar a semantica dos filtros (`4a98fe6`).
+- Baseline responsiva F0: tabelas densas usam scroll interno acessivel, grids podem encolher sem expandir o documento, alvos mobile respeitam 44 px e Playwright bloqueia regressoes em seis viewports.
 
 ## Contrato P&L observado
 - `calcEntryPnL()` calcula o P&L por entrada com `fiatAmount`/`fiat` como custo e nao inclui `fee`.
@@ -278,6 +286,18 @@ Observacao:
 - `renderDashboardFromCurrentState()` sera o unico adaptador do estado atual para a Main Page. Deve ser chamado por `renderAll()`, pela atualizacao do `priceService` e pela subscription de metas.
 - Quando a subscription de metas fornecer um `goalsSnapshot`, esse snapshot tem precedencia sobre a leitura interna de `goalsController.getSnapshot()`. O getter e apenas fallback quando nao houver override.
 - O atalho TXID da Main Page navega para Auditoria/Transacoes; nao expoe validacao individual sem uma transacao selecionada.
+
+## Roadmap desktop + mobile
+- F0 — baseline responsiva e gate E2E: concluido.
+- F1 — localizar/inventariar o prototipo da Main Page e fechar decisoes pendentes de produto, incluindo semantica de fees no dashboard.
+- F2a — expor comandos/navegacao compartilhados e reduzir acoplamento da composition root sem criar um segundo estado.
+- F2b — criar `js/features/dashboard-model.js` sobre `computePortfolioSummary()` e snapshots existentes.
+- F3 — montar uma primeira fatia vertical da Main Page com desktop e mobile no mesmo PR.
+- F4 — ligar atalhos e comandos existentes; nenhum fluxo paralelo de mutacao.
+- F5 — integrar o grafico real, preservando pins, crosshair, OHLC e target price.
+- F6 — manter tabela densa no desktop e oferecer representacao mobile adequada sem duplicar regras de negocio.
+- F7 — regressao funcional, acessibilidade, performance e matriz responsiva completa.
+- F8 — tornar a Main Page padrao apenas depois de paridade e remover fallback legado de forma controlada.
 - A navegacao programatica ainda precisa de um contrato publico em `js/ui/section-nav.js`; hoje `setActiveSection()` e privado do binder.
 - O grafico da Main Page deve reutilizar cache, price service, helpers e configuracao atuais. Nao pode criar polling ou fetch paralelo. O inventario deve decidir explicitamente se a target price line efemera tambem aparece nesse grafico.
 - O codigo-fonte do prototipo Main Page ainda nao foi localizado no filesystem; apenas PDFs/documentos de referencia foram encontrados.

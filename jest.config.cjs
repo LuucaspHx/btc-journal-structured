@@ -12,6 +12,7 @@ module.exports = {
     '/.claude/',
     '/coverage/',
     '/dist/',
+    '/tests/e2e/',
   ],
   modulePathIgnorePatterns: [
     '<rootDir>/.claude/',

@@ -415,10 +415,17 @@
             <div class="section-heading">Transações</div>
             <div id="transactionsMeta" class="muted text-caption">—</div>
           </div>
-          <table class="transactions-table">
-            <thead><tr><th>Data</th><th>Sats</th><th>Preço</th><th>P&L</th><th>Status</th><th>Classificação</th><th>Nota</th><th></th></tr></thead>
-            <tbody id="tx-body"></tbody>
-          </table>
+          <div
+            class="table-scroll-region"
+            role="region"
+            aria-label="Tabela de transações"
+            tabindex="0"
+          >
+            <table class="transactions-table">
+              <thead><tr><th>Data</th><th>Sats</th><th>Preço</th><th>P&L</th><th>Status</th><th>Classificação</th><th>Nota</th><th></th></tr></thead>
+              <tbody id="tx-body"></tbody>
+            </table>
+          </div>
         </div>
 
         <div id="auditCard" class="card section-panel" data-section-panel="audit">
@@ -450,19 +457,26 @@
               <div id="auditGroup-strategy" class="audit-group-body">—</div>
             </div>
           </div>
-          <table class="audit-table">
-            <thead>
-              <tr>
-                <th>Data</th>
-                <th>Status</th>
-                <th>TXID</th>
-                <th>Conclusão</th>
-              </tr>
-            </thead>
-            <tbody id="auditTableBody">
-              <tr><td colspan="4" class="muted">—</td></tr>
-            </tbody>
-          </table>
+          <div
+            class="table-scroll-region"
+            role="region"
+            aria-label="Tabela de auditoria"
+            tabindex="0"
+          >
+            <table class="audit-table">
+              <thead>
+                <tr>
+                  <th>Data</th>
+                  <th>Status</th>
+                  <th>TXID</th>
+                  <th>Conclusão</th>
+                </tr>
+              </thead>
+              <tbody id="auditTableBody">
+                <tr><td colspan="4" class="muted">—</td></tr>
+              </tbody>
+            </table>
+          </div>
           <div class="audit-footer">
             <button id="auditShowMoreBtn" type="button" class="ghost small is-initially-hidden">Mostrar mais</button>
           </div>
