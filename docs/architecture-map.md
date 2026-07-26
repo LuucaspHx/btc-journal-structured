@@ -59,7 +59,7 @@ Responsabilidade: persistencia, compatibilidade de dados, rede, timeout/abort, b
 
 ### UI modular
 
-- `js/ui/section-nav.js`
+- `js/ui/section-nav.js` — binder e API publica `activateSection()`
 - `js/ui/table/{helpers,render,bind}.js`
 - `js/ui/audit/{helpers,render,bind}.js`
 - `js/ui/import-export/{helpers,render,bind}.js`

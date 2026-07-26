@@ -47,7 +47,7 @@ Fluxo basico que voce vai repetir:
 - `js/storage/*` cuida do `localStorage` e da migracao do legado.
 - `js/services/txid-service.js` valida TXIDs contra o explorer.
 - `js/services/http.js` centraliza fetch com timeout/abort e normalizacao de falhas.
-- `js/ui/section-nav.js` concentra a navegacao entre paineis sem script inline no HTML.
+- `js/ui/section-nav.js` concentra a navegacao entre paineis sem script inline no HTML e expoe `activateSection()` para atalhos programaticos.
 - `js/ui/chart/helpers.js` concentra dados puros dos pins e a annotation de target price.
 - `js/features/goals-controller.js` controla metas, progresso e catalogos.
 - `js/import-sanitizer.js` normaliza imports legados e formatos externos.
@@ -178,8 +178,8 @@ Invariantes praticos:
 
 ## Testes existentes
 Suite local validada em 2026-07-26 com `npm test -- --runInBand`:
-- 21 suites ok
-- 134 testes ok
+- 22 suites ok
+- 138 testes ok
 
 Baseline responsiva validada com `npm run test:e2e`:
 - 6 viewports em Chromium: 320x720, 390x844, 768x1024, 844x390, 1024x768 e 1440x900
@@ -290,7 +290,7 @@ Observacao:
 ## Roadmap desktop + mobile
 - F0 — baseline responsiva e gate E2E: concluido.
 - F1 — localizar/inventariar o prototipo da Main Page e fechar decisoes pendentes de produto, incluindo semantica de fees no dashboard.
-- F2a — expor comandos/navegacao compartilhados e reduzir acoplamento da composition root sem criar um segundo estado.
+- F2a — em curso: navegacao compartilhada exposta; faltam os demais comandos e a reducao controlada do acoplamento da composition root.
 - F2b — criar `js/features/dashboard-model.js` sobre `computePortfolioSummary()` e snapshots existentes.
 - F3 — montar uma primeira fatia vertical da Main Page com desktop e mobile no mesmo PR.
 - F4 — ligar atalhos e comandos existentes; nenhum fluxo paralelo de mutacao.
@@ -298,7 +298,7 @@ Observacao:
 - F6 — manter tabela densa no desktop e oferecer representacao mobile adequada sem duplicar regras de negocio.
 - F7 — regressao funcional, acessibilidade, performance e matriz responsiva completa.
 - F8 — tornar a Main Page padrao apenas depois de paridade e remover fallback legado de forma controlada.
-- A navegacao programatica ainda precisa de um contrato publico em `js/ui/section-nav.js`; hoje `setActiveSection()` e privado do binder.
+- A navegacao programatica usa `activateSection()` como contrato publico; o binder e futuros atalhos devem delegar a essa mesma API.
 - O grafico da Main Page deve reutilizar cache, price service, helpers e configuracao atuais. Nao pode criar polling ou fetch paralelo. O inventario deve decidir explicitamente se a target price line efemera tambem aparece nesse grafico.
 - O codigo-fonte do prototipo Main Page ainda nao foi localizado no filesystem; apenas PDFs/documentos de referencia foram encontrados.
 - A ausencia do prototipo bloqueia `dashboard-model.js` definitivo e toda integracao visual, mas nao bloqueia a extracao pura de `computePortfolioSummary()` depois de a CSP estar resolvida.
@@ -331,4 +331,4 @@ Funcionalidades presentes no código (verificar com `git ls-files js/`):
 
 ## Próximo passo
 
-Proximo trabalho tecnico: localizar o codigo-fonte do prototipo Main Page e inventariar seu contrato visual. `computePortfolioSummary()` e seus characterization tests ja estao prontos para alimentar o futuro read model.
+Proximo trabalho tecnico independente do prototipo: inventariar e expor os comandos existentes que a Main Page consumira, sem criar mutacoes paralelas. Em paralelo, localizar o codigo-fonte do prototipo para desbloquear o read model e a integracao visual.
