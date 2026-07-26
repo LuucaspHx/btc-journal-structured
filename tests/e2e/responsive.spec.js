@@ -165,3 +165,14 @@ for (const viewport of VIEWPORTS) {
     });
   });
 }
+
+test('o comando partilhado de exportacao abre o modal canonico', async ({ page }) => {
+  await installDeterministicData(page);
+  await page.goto('/index.html');
+
+  await page.getByRole('button', { name: 'Exportar JSON', exact: true }).click();
+
+  const modal = page.getByRole('dialog').filter({ hasText: 'Exportar JSON' });
+  await expect(modal).toBeVisible();
+  await expect(page.locator('#exportPreview')).toHaveValue(/"txs"/);
+});

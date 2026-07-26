@@ -18,6 +18,7 @@ import {
   createEmptyGoalsState,
   hydrateGoalsState,
 } from './features/goals-controller.js';
+import { createAppCommands } from './features/app-commands.js';
 import { validateTxidEntry, buildExplorerUrl, TXID_STATUS } from './services/txid-service.js';
 import {
   shortTxid,
@@ -66,7 +67,7 @@ import {
   getPrimaryPriceDataset,
 } from './ui/chart/helpers.js';
 import { chartTokens, readToken } from './ui/chart/tokens.js';
-import { bindSectionNavigation } from './ui/section-nav.js';
+import { activateSection, bindSectionNavigation } from './ui/section-nav.js';
 
 const LS_KEY = 'btc_journal_state_v3';
 const CHART_MODE_STORAGE_KEY = 'btc_journal_chart_mode';
@@ -2718,6 +2719,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function boot() {
   bindSectionNavigation();
+  const appCommands = createAppCommands({
+    activateSection,
+    openExport: openExportModal,
+  });
   loadState();
   priceService = createPriceService({ fetcher: createCoinGeckoFetcher() });
   priceService.onPriceUpdate(() => renderTableAndStats());
@@ -2733,7 +2738,7 @@ function boot() {
     onDelete: deleteTransactionById,
   });
   bindImportExport({
-    onOpenExport: openExportModal,
+    onOpenExport: appCommands.openExport,
     onDownloadJson: downloadExportFile,
     onDownloadCsv: downloadExportCsv,
     onCopyExport: copyExportJson,
