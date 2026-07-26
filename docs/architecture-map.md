@@ -1,183 +1,120 @@
 # BTC Journal - Architecture Map
 
-Atualizado em 2026-04-05.
+Atualizado em 2026-07-26.
 
-## Objetivo
-- Dar uma leitura curta da arquitetura atual.
-- Identificar o que e runtime, o que e dominio, o que e infraestrutura e o que e divida tecnica.
-- Servir de apoio para o refactor do `js/app.js`.
+## Visao geral
 
-## Visao geral do sistema
-- Aplicacao SPA estatica, sem backend.
-- Entrada principal: `index.html`.
-- Runtime principal: `js/app.js`.
-- Persistencia local: `localStorage`.
-- Integracoes externas:
-  - CoinGecko para preco atual, historico e OHLC
-  - mempool.space para validacao de TXID
+- SPA estatica, sem backend ou bundler.
+- `index.html` define o shell e os contratos DOM.
+- `js/app.js` e a composition root e ainda concentra parte relevante do runtime.
+- `localStorage` guarda o estado canonico em `btc_journal_state_v3`.
+- CoinGecko fornece preco/historico/OHLC; mempool.space valida TXIDs.
+- A mesma engine alimenta desktop e mobile. Viewport altera apresentacao, nunca estado ou regra de negocio.
 
 ## Camadas atuais
 
-### 1. Shell e layout
+### Shell e design system
+
 - `index.html`
+- `css/tokens.css`
 - `css/style.css`
 
-Responsabilidade:
-- estrutura visual da SPA
-- modais
-- containers e IDs usados pelo runtime
-- carga de dependencias CDN
+Responsabilidade: estrutura da SPA, IDs consumidos pelos binders, tokens semanticos, layout e adaptacao responsiva. Tabelas densas ficam em regioes de scroll internas para nao expandir o documento.
 
-Observacao:
-- o HTML esta fortemente acoplado ao `js/app.js` por IDs e elementos de interface.
+### Composition root
 
-### 2. Runtime principal
 - `js/app.js`
 
-Responsabilidade:
-- boot da aplicacao
-- bind de eventos
-- controle de estado em memoria
-- renderizacao da UI
-- import/export
-- orquestracao de auditoria, metas e grafico
-- fetch para APIs externas
+Responsabilidade: boot, estado em memoria, persistencia, lifecycle do Chart.js e coordenacao entre modulos. Com 3458 linhas, continua sendo o principal hotspot; novos dominios nao devem ser implementados diretamente nele quando puderem entrar por contratos testaveis.
 
-Observacao:
-- hoje e o principal hotspot tecnico do projeto.
+### Dominio puro
 
-### 3. Dominio puro
 - `js/core/schema.js`
 - `js/core/calculations.js`
+- `js/core/portfolio.js`
 - `js/core/validators.js`
 - `js/core/audit.js`
 - `js/core/goals.js`
 
-Responsabilidade:
-- shape canonico
-- calculos
-- validacoes
-- metricas de auditoria
-- metas e progresso
+Regra: sem DOM, fetch ou `localStorage`. `computePortfolioSummary()` e o contrato agregado compartilhado; consumidores nao devem recalcular portfolio na UI.
 
-Regra:
-- esta camada deve permanecer sem DOM, sem `localStorage` e sem fetch.
+### Controladores e read models de feature
 
-### 4. Infraestrutura e integracao
+- `js/features/goals-controller.js`
+- futuro `js/features/dashboard-model.js`
+
+Responsabilidade: compor snapshots e regras puras para consumo da UI. Nao cria um segundo store; recebe o estado canonico e devolve modelos derivados.
+
+### Infraestrutura
+
 - `js/storage/local-db.js`
 - `js/storage/migrations.js`
-- `js/services/txid-service.js`
 - `js/import-sanitizer.js`
+- `js/services/http.js`
+- `js/services/retry-policy.js`
+- `js/services/price-service.js`
+- `js/services/txid-service.js`
 
-Responsabilidade:
-- persistencia local
-- migracao legado -> v3
-- traducao de payloads importados
-- acesso ao explorer
+Responsabilidade: persistencia, compatibilidade de dados, rede, timeout/abort, backoff e integracoes externas.
 
-### 5. Controladores de feature
-- `js/features/goals-controller.js`
+### UI modular
 
-Responsabilidade:
-- coordenar goals state
-- recalcular progresso
-- expor snapshot para a UI
+- `js/ui/section-nav.js`
+- `js/ui/table/{helpers,render,bind}.js`
+- `js/ui/audit/{helpers,render,bind}.js`
+- `js/ui/import-export/{helpers,render,bind}.js`
+- `js/ui/chart/{helpers,config,crosshair,tokens,bind}.js`
 
-### 6. Modularizacao iniciada
-- `js/ui/table/helpers.js`
+Padrao: `helpers` mantem logica pura, `render` escreve no DOM, `bind` registra eventos por callbacks e `app.js` coordena. O lifecycle final do Chart.js ainda vive em `app.js`.
 
-Responsabilidade:
-- primeiro bloco extraido do monolito para o dominio de tabela/transacao
+## Fluxo de dados
 
-Observacao:
-- a arquitetura alvo pede mais modulos em `js/ui/*`, mas isso ainda nao aconteceu.
+1. `boot()` carrega e migra o estado persistido.
+2. Entradas passam por validacao, normalizacao e canonizacao.
+3. Mutacoes salvam o mesmo estado em `btc_journal_state_v3`.
+4. `renderAll()` e subscriptions atualizam as superficies derivadas.
+5. Servicos externos atualizam preco, grafico e validacao on-chain sem substituir o estado canonico.
+6. Export/import preserva transacoes, moeda e metas.
 
-## Fluxo principal de dados
-1. Usuario interage com `index.html`.
-2. `js/app.js` coleta inputs e valida payload.
-3. Entrada e normalizada e canonizada.
-4. Estado e salvo em `btc_journal_state_v3`.
-5. UI e re-renderizada.
-6. Se houver TXID, a validacao on-chain pode ser executada.
-7. Metas e auditoria usam o mesmo estado para computar visoes derivadas.
+## Invariantes
 
-## Estado persistido
-Shape principal esperado:
+- `SCHEMA_VERSION = 3` e `btc_journal_state_v3` permanecem fontes de verdade.
+- Desktop e mobile compartilham engine, comandos e modelos.
+- A Main Page futura representa o portfolio completo, independente dos filtros da tabela.
+- Nenhum modulo de UI persiste estado de dominio por conta propria.
+- Migracoes e imports preservam backup e compatibilidade.
+- Pins, crosshair, OHLC e target price fazem parte do contrato atual do grafico.
 
-```json
-{
-  "txs": [],
-  "goals": {
-    "list": [],
-    "activeGoalId": null,
-    "lastComputedAt": null
-  },
-  "vs": "usd"
-}
-```
+## Qualidade e entrega
 
-## Invariantes arquiteturais
-- `SCHEMA_VERSION` continua sendo a fonte de verdade do schema.
-- `localStorage` continua usando `btc_journal_state_v3`.
-- Import/export nao pode mudar shape sem tarefa explicita.
-- Migracao do legado precisa continuar suportada.
-- Logica de TXID e auditoria nao deve sair de modulos de dominio/servico para a UI.
+- Jest cobre dominio, storage, services e helpers: `npm test`.
+- Playwright executa a SPA real em seis viewports: `npm run test:e2e`.
+- O smoke responsivo verifica todas as secoes, overflow global, erros de runtime e alvos tacteis em mobile.
+- O CI instala Chromium e executa Jest + Playwright.
+- O deploy de Pages publica apenas o `dist/` minimo.
 
 ## Hotspots
 
-### Hotspot 1 - `js/app.js`
-- mistura dominio, DOM, fetch, persistencia e render
-- custo de mudanca alto
-- risco de regressao transversal
+1. `js/app.js`: estado, DOM e lifecycle ainda muito concentrados.
+2. Importacao/migracao: qualquer alteracao pode afetar dados existentes.
+3. Grafico: combina rede, canvas, estado e plugins.
+4. Semantica de fees: P&L por linha e agregado possuem contratos historicos diferentes.
+5. `localStorage`: requer export/backup para mitigar perda local.
 
-### Hotspot 2 - importacao e migracao
-- `js/import-sanitizer.js`
-- `js/storage/migrations.js`
-- `js/storage/local-db.js`
+## Roadmap arquitetural
 
-Motivo:
-- qualquer erro aqui afeta compatibilidade dos dados
+1. Manter gates Jest, tokens, lint e Playwright verdes.
+2. Inventariar o prototipo externo antes de moldar a Main Page.
+3. Expor comandos e navegacao por APIs compartilhadas, sem store paralelo.
+4. Criar `dashboard-model.js` como read model puro sobre portfolio, metas e preco.
+5. Entregar cada fatia vertical com desktop e mobile no mesmo PR.
+6. Integrar o grafico existente sem perder plugins ou lifecycle.
+7. Reduzir `app.js` por extracoes pequenas, caracterizadas e reversiveis.
 
-### Hotspot 3 - grafico
-- parte do `js/app.js` ligada a fetch, serie historica, OHLC e render
+## Fora de escopo imediato
 
-Motivo:
-- depende de APIs externas, estado e canvas ao mesmo tempo
-
-## Arquitetura alvo
-
-### Camada 1 - dominio puro
-- `js/core/*`
-
-### Camada 2 - infraestrutura
-- `js/storage/*`
-- `js/services/*`
-- `js/import-sanitizer.js` ou modulo equivalente de adaptacao
-
-### Camada 3 - estado
-- futuro `js/state/app-state.js`
-
-### Camada 4 - UI por dominio
-- `js/ui/form/*`
-- `js/ui/table/*`
-- `js/ui/import-export/*`
-- `js/ui/audit/*`
-- `js/ui/goals/*`
-- `js/ui/chart/*`
-
-### Camada 5 - composicao
-- `js/app.js`
-
-## Ordem de refactor recomendada
-1. helpers puros
-2. renderizadores
-3. binders
-4. estado compartilhado
-5. `js/app.js` como orquestrador
-
-## O que nao e prioridade agora
-- reescrever schema
-- trocar persistencia
-- trocar APIs externas
-- introduzir bundler/framework
-- adicionar features grandes antes de reduzir o custo do runtime principal
+- framework ou bundler novo
+- backend remoto
+- troca da chave/schema de storage
+- segundo aplicativo mobile
+- reescrita total do runtime
