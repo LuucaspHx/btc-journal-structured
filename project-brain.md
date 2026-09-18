@@ -177,12 +177,12 @@ Invariantes praticos:
   - mempool.space
 
 ## Testes existentes
-Suite local validada em 2026-07-26 com `npm test -- --runInBand`:
-- 23 suites ok
-- 145 testes ok
+Suite validada no CI em 2026-09-18 com `npm test`:
+- 25 suites ok
+- 151 testes ok
 
 Baseline responsiva validada com `npm run test:e2e`:
-- 7 testes em Chromium: seis viewports (320x720, 390x844, 768x1024, 844x390, 1024x768 e 1440x900) e wiring real do comando de exportacao
+- 8 testes em Chromium: seis viewports (320x720, 390x844, 768x1024, 844x390, 1024x768 e 1440x900), wiring real do comando de exportacao e isolamento do Security Center
 - todas as secoes sem overflow global ou erros de runtime
 - controlos visiveis em 320/390 com alvo minimo de 44x44 px
 - CoinGecko isolado por fixtures deterministicas no teste
