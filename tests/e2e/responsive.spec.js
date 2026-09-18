@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 const STORAGE_KEY = 'btc_journal_state_v3';
-const SECTION_NAMES = ['Gráfico', 'Resumo', 'Novo aporte', 'Transações', 'Auditoria', 'Metas'];
+const SECTION_NAMES = ['Gráfico', 'Resumo', 'Novo aporte', 'Transações', 'Auditoria', 'Metas', 'Security'];
 const VIEWPORTS = [
   { name: 'mobile-320', width: 320, height: 720, touch: true },
   { name: 'mobile-390', width: 390, height: 844, touch: true },
@@ -165,6 +165,24 @@ for (const viewport of VIEWPORTS) {
     });
   });
 }
+
+
+test('Security Center carrega exemplo sem alterar o estado financeiro', async ({ page }) => {
+  await installDeterministicData(page);
+  await page.goto('/index.html');
+
+  const before = await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEY);
+
+  await page.getByRole('button', { name: 'Security', exact: true }).click();
+  await page.getByRole('button', { name: 'Carregar exemplo', exact: true }).click();
+
+  await expect(page.locator('#securityTarget')).toHaveText('btcjournal.app');
+  await expect(page.locator('#securitySubdomainCount')).toHaveText('3');
+  await expect(page.locator('#securityServiceCount')).toHaveText('3');
+
+  const after = await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEY);
+  expect(after).toBe(before);
+});
 
 test('o comando partilhado de exportacao abre o modal canonico', async ({ page }) => {
   await installDeterministicData(page);

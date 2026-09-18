@@ -46,6 +46,17 @@ Regra: sem DOM, fetch ou `localStorage`. `computePortfolioSummary()` e o contrat
 
 Responsabilidade: compor snapshots, comandos e regras puras para consumo da UI. Nao cria um segundo store; recebe dependencias do composition root e devolve contratos derivados. O registry de comandos permanece local a `boot()` e deve ser injetado nos binders consumidores.
 
+### Security / Infrastructure observability
+
+- `js/security/model.js`
+- `js/security/bbot-normalizer.js`
+- `js/security/controller.js`
+- `js/ui/security/{render,bind}.js`
+
+Responsabilidade: importar e normalizar resultados de observabilidade da infraestrutura publica, mantendo o formato bruto do BBOT fora da UI. O controlador possui estado efemero proprio e nao le, grava ou deriva o estado financeiro em `btc_journal_state_v3`.
+
+Fluxo V1: BBOT/fixture -> JSON ou JSONL -> normalizador -> security model -> Security Center. A aplicacao nao executa BBOT no browser. Relações `parent -> event` sao preservadas no modelo para historico/grafo futuro, sem implementar comparacao de scans nesta etapa.
+
 ### Infraestrutura
 
 - `js/storage/local-db.js`
