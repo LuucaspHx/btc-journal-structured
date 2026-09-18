@@ -5,6 +5,7 @@ const SECTION_TARGET_IDS = {
   transactions: 'transactionsSection',
   audit: 'auditSection',
   goals: 'goalsSection',
+  security: 'securitySection',
 };
 
 export function activateSection(
