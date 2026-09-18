@@ -19,6 +19,7 @@ import {
   hydrateGoalsState,
 } from './features/goals-controller.js';
 import { createAppCommands } from './features/app-commands.js';
+import { createSecurityController } from './security/controller.js';
 import { validateTxidEntry, buildExplorerUrl, TXID_STATUS } from './services/txid-service.js';
 import {
   shortTxid,
@@ -67,6 +68,8 @@ import {
   getPrimaryPriceDataset,
 } from './ui/chart/helpers.js';
 import { chartTokens, readToken } from './ui/chart/tokens.js';
+import { bindSecurityControls } from './ui/security/bind.js';
+import { renderSecurityCenter } from './ui/security/render.js';
 import { activateSection, bindSectionNavigation } from './ui/section-nav.js';
 
 const LS_KEY = 'btc_journal_state_v3';
@@ -81,6 +84,7 @@ let editingGoalId = null;
 let targetPriceUsd = null;
 let syncTargetPriceCurrency = () => {};
 const goalsController = createGoalsController();
+const securityController = createSecurityController();
 goalsController.setGoalsState(state.goals);
 goalsController.subscribe((snapshot) => renderGoalsPanel(snapshot));
 const SORT_PRESETS = new Set([
@@ -2747,6 +2751,29 @@ function boot() {
     onCloseImport: () => closeImportModal(),
     onCloseExport: closeExportModal,
   });
+  securityController.subscribe((snapshot) => renderSecurityCenter(snapshot));
+  bindSecurityControls({
+    onImportText: ({ text, name }) => {
+      securityController.importText(text, { source: name || 'local-file' });
+      showMessage('Security Center: scan importado e normalizado.', 'success');
+    },
+    onLoadExample: async () => {
+      const response = await fetchWithTimeout('./data/security-scan.example.json');
+      if (!response.ok) {
+        throw new Error(`Não foi possível carregar o exemplo (${response.status}).`);
+      }
+      const text = await response.text();
+      securityController.importText(text, { source: 'security-scan.example.json' });
+      showMessage('Security Center: exemplo carregado.', 'success');
+    },
+    onError: (error) => {
+      showMessage(
+        `Security Center: ${error?.message || 'falha ao importar o scan.'}`,
+        'error'
+      );
+    },
+  });
+  renderSecurityCenter(securityController.getSnapshot());
   bindFilters({
     onChange: () => {
       syncFiltersFromInputs();
