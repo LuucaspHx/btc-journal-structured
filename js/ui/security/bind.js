@@ -13,6 +13,9 @@ export function bindSecurityControls({
     const file = event.target?.files?.[0];
     if (!file) return;
     try {
+      if (Number(file.size) > 10 * 1024 * 1024) {
+        throw new Error('O arquivo de scan excede o limite de 10 MB desta versão.');
+      }
       const text = await file.text();
       await onImportText?.({ text, name: file.name });
     } catch (error) {
