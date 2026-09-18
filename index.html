@@ -76,6 +76,7 @@
       <button type="button" class="section-menu-btn" data-section="transactions">Transações</button>
       <button type="button" class="section-menu-btn" data-section="audit">Auditoria</button>
       <button type="button" class="section-menu-btn" data-section="goals">Metas</button>
+      <button type="button" class="section-menu-btn" data-section="security">Security</button>
     </nav>
 
     <div id="messageContainer" class="message-container" aria-live="polite"></div>
@@ -523,6 +524,67 @@
                 </tbody>
               </table>
             </div>
+          </div>
+        </div>
+
+        <div id="securityCard" class="card section-panel security-center" data-section-panel="security">
+          <div id="securitySection" class="section-anchor" aria-hidden="true"></div>
+          <div class="security-center-head">
+            <div>
+              <div class="section-heading">Security Center</div>
+              <div class="muted text-caption">Inventário da infraestrutura pública a partir de resultados importados. Nenhum scan é executado no navegador.</div>
+            </div>
+            <div class="security-center-actions">
+              <label class="ghost import-trigger security-import-trigger" for="securityImportInput">Importar scan
+                <input id="securityImportInput" type="file" accept="application/json,.json,.jsonl,.txt" hidden />
+              </label>
+              <button id="securityExampleBtn" type="button" class="ghost">Carregar exemplo</button>
+            </div>
+          </div>
+
+          <div id="securityStatus" class="security-status muted" aria-live="polite">
+            Nenhum scan importado. O módulo não executa BBOT no navegador.
+          </div>
+
+          <div class="security-scan-meta">
+            <div><span class="muted">Domínio</span><strong id="securityTarget">—</strong></div>
+            <div><span class="muted">Último scan</span><strong id="securityLastScan">—</strong></div>
+            <div><span class="muted">Fonte</span><strong id="securitySource">—</strong></div>
+          </div>
+
+          <div class="security-kpi-grid">
+            <div class="security-kpi"><span class="muted">Assets discovered</span><strong id="securityAssetCount">0</strong></div>
+            <div class="security-kpi"><span class="muted">Subdomains</span><strong id="securitySubdomainCount">0</strong></div>
+            <div class="security-kpi"><span class="muted">Public services</span><strong id="securityServiceCount">0</strong></div>
+            <div class="security-kpi"><span class="muted">Findings</span><strong id="securityFindingCount">0</strong></div>
+            <div class="security-kpi"><span class="muted">New assets</span><strong id="securityNewAssetCount">—</strong></div>
+            <div class="security-kpi"><span class="muted">Relations</span><strong id="securityRelationCount">0</strong></div>
+          </div>
+
+          <div class="security-subsection">
+            <div class="section-heading">Ativos normalizados</div>
+            <div class="muted text-caption">A interface consome o modelo interno do BTC Journal, não o formato bruto do BBOT.</div>
+            <div class="table-scroll-region" role="region" aria-label="Tabela de ativos de segurança" tabindex="0">
+              <table class="security-assets-table">
+                <thead>
+                  <tr><th>Tipo</th><th>Ativo</th><th>Detalhes</th><th>Origem</th></tr>
+                </thead>
+                <tbody id="securityAssetsBody">
+                  <tr><td colspan="4" class="muted">Importe um JSON/JSONL autorizado ou carregue o exemplo.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="security-subsection">
+            <div class="section-heading">Findings</div>
+            <ul id="securityFindingsList" class="security-findings-list">
+              <li class="muted">Nenhum finding importado neste scan.</li>
+            </ul>
+          </div>
+
+          <div class="security-scope-note">
+            Use apenas resultados de scans contra infraestrutura pertencente ao BTC Journal, laboratórios ou recursos explicitamente autorizados. A V1 é somente leitura/importação.
           </div>
         </div>
       </main>
