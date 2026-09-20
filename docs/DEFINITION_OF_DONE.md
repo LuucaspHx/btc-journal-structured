@@ -1,41 +1,32 @@
 # Definition of Done
 
-## Regra de Ouro
+Estado técnico é comprovado pelo filesystem, Git e checks executados. Documentos registram decisões e contexto.
 
-> Estado técnico = filesystem + git. Brain = decisões + contexto. Nunca ao contrário.
+## Mudança de código
 
-Nenhum milestone fecha por declaração. Fecha por evidência — output real de comandos.
+- [ ] O diff contém apenas arquivos intencionais.
+- [ ] Testes relevantes foram executados e seu resultado está ligado ao PR ou artefato de entrega.
+- [ ] `npm test` está verde.
+- [ ] `npm run lint` está verde.
+- [ ] Mudanças de tokens passam em `npm run tokens:check:full`.
+- [ ] Mudanças visuais, de navegação ou renderização passam em `npm run test:e2e`.
+- [ ] Mudanças de storage/import/migração provam falha atômica e recuperação do estado anterior.
+- [ ] O commit tem mensagem descritiva e pode ser revertido sem depender de arquivos locais.
 
----
+## Pull request
 
-## DoD — Milestone de Produto (M*)
+- [ ] CI está verde no GitHub.
+- [ ] Título e descrição explicam comportamento, risco e validação.
+- [ ] Não há artefatos locais, dados pessoais, credenciais ou arquivos históricos acidentais.
+- [ ] Decisões arquiteturais ou de produto alteradas foram registradas no `project-brain.md`.
+- [ ] Limitações ou decisões pendentes que afetam correção estão explícitas.
 
-- [ ] `npm test` verde com output colado
-- [ ] `git status --short` limpo
-- [ ] Código commitado no repo canónico
-- [ ] `project-brain.md` atualizado apenas nas seções de decisões/contexto
-- [ ] Smoke manual documentado (se aplicável)
-- [ ] `npm run test:e2e` verde quando HTML, CSS, navegação, layout ou renderização visível mudarem
+## Marco ou snapshot
 
-## DoD — Milestone de Engenharia (E*)
+- [ ] O commit e a branch exatos estão identificados.
+- [ ] O conjunto completo de verificações exigidas está verde.
+- [ ] O working tree usado para entrega não contém mudanças intencionais omitidas.
+- [ ] Smoke manual está documentado quando integrações reais ou comportamento visual não são cobertos automaticamente.
+- [ ] Um ZIP, se necessário, foi criado somente depois da validação e exclui `.git`, `node_modules`, cobertura e dados pessoais.
 
-- [ ] Critério de fecho da spec executado e output colado
-- [ ] `npm test` verde
-- [ ] `git status --short` limpo
-- [ ] Commit presente no histórico com mensagem descritiva
-
-## DoD — Pull Request
-
-- [ ] CI "Tests" verde no GitHub
-- [ ] Sem ficheiros não intencionais no diff
-- [ ] `project-brain.md` atualizado se decisões arquiteturais mudaram
-- [ ] Matriz Playwright verde quando o PR alterar uma superfície visual
-
----
-
-## Regras para Agentes
-
-1. Verificar filesystem antes de reportar estado
-2. Colar output real de `npm test` ao fechar qualquer milestone
-3. Repo canónico: `/Users/lucas_phx/Documents/btc-journal-structured`
-4. Nunca marcar trabalho como feito sem evidência verificável
+Não é necessário colar grandes outputs em documentos versionados. Preserve um resumo verificável e um link para o check, PR ou artefato de auditoria correspondente.
