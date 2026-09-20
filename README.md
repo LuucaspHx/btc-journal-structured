@@ -1,55 +1,49 @@
-BTC Journal — instruções rápidas
+# BTC Journal
 
-Rodando localmente
+SPA estática para registrar operações em Bitcoin, acompanhar custo e desempenho, validar TXIDs e organizar metas em satoshis. Os dados ficam no `localStorage` do navegador; não há backend nem conta remota.
 
-1. Abra um terminal e navegue para a pasta do projeto:
+## Executar localmente
 
-```bash
-cd /path/to/btc-journal-structured
-```
-
-2. Inicie um servidor estático simples (recomendado para evitar problemas com imports e CORS):
+Requer uma versão de Node suportada pelo projeto e Python 3 para o servidor estático.
 
 ```bash
+npm ci
 python3 -m http.server 8000
 ```
 
-Abra http://localhost:8000 no navegador.
+Abra `http://localhost:8000`.
 
-Enviar para o GitHub (passo a passo)
-
-1. Inicialize um repositório Git (se ainda não existir):
+## Verificações
 
 ```bash
-git init
-git add .
-git commit -m "Init btc-journal-structured"
-```
-
-2. Crie um repositório vazio no GitHub (pela web). Copie a URL do repositório (ex.: git@github.com:seu-usuario/seu-repo.git ou https://github.com/seu-usuario/seu-repo.git).
-
-3. Configure o remoto e envie:
-
-```bash
-git remote add origin <URL-DO-REPO>
-git branch -M main
-git push -u origin main
-```
-
-Se preferir HTTPS, use a URL HTTPS e autentique quando solicitado (ou configure um token).
-
-Executando testes (local)
-
-Se quiser rodar os testes (Jest) localmente:
-
-```bash
-# instale dependências
-npm install
-
-# rode os testes
 npm test
+npm run lint
+npm run test:e2e
 ```
 
-Observações
-- Recomendo criar um arquivo `.env` (não commitá-lo) se adicionar chaves/segredos no futuro.
-- O app é uma SPA estática; hospedar no GitHub Pages é direto (pasta raiz).
+O Playwright instala seu navegador separadamente quando necessário:
+
+```bash
+npx playwright install chromium
+```
+
+Mudanças de estilo também devem preservar os tokens:
+
+```bash
+npm run tokens:check:full
+```
+
+## Dados e dependências externas
+
+- Estado canônico: `btc_journal_state_v3` no `localStorage`.
+- Preços e histórico: CoinGecko.
+- Validação on-chain: mempool.space.
+- Gráficos e datas: bibliotecas carregadas por CDN no navegador.
+
+Exporte o JSON periodicamente. Limpar os dados do navegador pode apagar o diário local.
+
+## Entrega
+
+O GitHub Actions testa branches e pull requests. O deploy do GitHub Pages ocorre somente a partir de `main` e publica o conteúdo preparado em `dist/`; consulte `.github/workflows/deploy-pages.yml` para o contrato executável.
+
+Arquitetura e critérios de entrega estão em [docs/architecture-map.md](docs/architecture-map.md) e [docs/DEFINITION_OF_DONE.md](docs/DEFINITION_OF_DONE.md).
