@@ -2000,7 +2000,21 @@ function bindForm() {
       return;
     }
     const baseId = editingTxId || uid();
-    const normalized = normalizeEntry({ id: baseId, date, sats, price, fiat, fee, note });
+    const normalized = normalizeEntry({
+      id: baseId,
+      date,
+      sats,
+      price,
+      fiat,
+      fee,
+      note,
+      exchange,
+      type,
+      txid: txidValue,
+      wallet: walletValue,
+      strategy: strategyValue,
+      tags: tagList,
+    });
     if (!normalized) {
       setFormError('Falha ao normalizar a entrada. Verifique os valores.');
       return;
@@ -2446,8 +2460,7 @@ function detectAndOfferMigration() {
   try {
     const old = detectOldKey('btcJournalV1');
     if (!old) return;
-    const existingState = storageLoadState(LS_KEY) || {};
-    const hasNew = Array.isArray(existingState?.txs) && existingState.txs.length > 0;
+    const hasNew = localStorage.getItem(LS_KEY) !== null;
     const proceed = confirm(
       'Dados antigos detectados (btcJournalV1). Deseja migrar para o novo formato? Será criado um backup antes.'
     );
