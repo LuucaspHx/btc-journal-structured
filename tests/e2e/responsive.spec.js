@@ -176,3 +176,48 @@ test('o comando partilhado de exportacao abre o modal canonico', async ({ page }
   await expect(modal).toBeVisible();
   await expect(page.locator('#exportPreview')).toHaveValue(/"txs"/);
 });
+
+test('o formulario preserva metadados sanitizados no estado canonico', async ({ page }) => {
+  await installDeterministicData(page);
+  await page.route('https://mempool.space/**', (route) => route.abort());
+  await page.goto('/index.html');
+
+  await page.getByRole('button', { name: 'Novo aporte', exact: true }).click();
+  await page.locator('#tx-date').fill('2026-09-21');
+  await page.locator('#tx-price').fill('50000');
+  await page.locator('#tx-sats').fill('200000');
+  await page.locator('#tx-fiat').fill('100');
+  await page.locator('.tx-form-extra-fields').evaluate((element) => {
+    element.hidden = false;
+  });
+  await page.locator('#tx-exchange').fill('Kraken');
+  await page.locator('#tx-strategy').fill('dca');
+  await page.locator('#tx-tags').fill('cold,long-term');
+  await page.locator('#tx-wallet').fill('bc1-test-wallet');
+  await page.locator('#tx-txid').fill('a'.repeat(64));
+  await page.locator('#tx-add').click();
+
+  await expect
+    .poll(() =>
+      page.evaluate((key) => {
+        const saved = JSON.parse(localStorage.getItem(key));
+        const entry = saved.txs.find((tx) => tx.date === '2026-09-21');
+        return entry
+          ? {
+              exchange: entry.exchange,
+              strategy: entry.strategy,
+              tags: entry.tags,
+              wallet: entry.wallet,
+              txid: entry.txid,
+            }
+          : null;
+      }, STORAGE_KEY)
+    )
+    .toEqual({
+      exchange: 'Kraken',
+      strategy: 'dca',
+      tags: ['cold', 'long-term'],
+      wallet: 'bc1-test-wallet',
+      txid: 'a'.repeat(64),
+    });
+});
