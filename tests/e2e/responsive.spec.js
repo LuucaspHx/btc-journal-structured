@@ -176,3 +176,84 @@ test('o comando partilhado de exportacao abre o modal canonico', async ({ page }
   await expect(modal).toBeVisible();
   await expect(page.locator('#exportPreview')).toHaveValue(/"txs"/);
 });
+
+for (const stage of ['backup', 'save']) {
+  test(`importacao preserva disco e memoria quando ${stage} falha`, async ({ page }) => {
+    await installDeterministicData(page);
+    await page.goto('/index.html');
+    await page.locator('#btn-export').click();
+    const previous = JSON.parse(await page.locator('#exportPreview').inputValue());
+    await page.keyboard.press('Escape');
+    const previousStored = await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEY);
+    await page.locator('#file-import').setInputFiles({
+      name: 'synthetic-replacement.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(JSON.stringify({ entries: [{ ...stateFixture.txs[0], id: 'replacement' }] })),
+    });
+    await expect(page.locator('#importApplyBtn')).toBeEnabled();
+    await page.evaluate(({ key, stage }) => {
+      const original = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (name, value) {
+        if (stage === 'backup' ? name.startsWith(`${key}.bak.`) : name === key) {
+          throw new DOMException('Synthetic quota failure', 'QuotaExceededError');
+        }
+        return original.call(this, name, value);
+      };
+    }, { key: STORAGE_KEY, stage });
+    await page.locator('#importApplyBtn').click();
+    await expect(page.locator('#messageContainer')).toContainText(
+      stage === 'backup' ? 'não foi possível criar o backup' : 'armazenamento local recusou'
+    );
+    expect(await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEY)).toBe(previousStored);
+    await page.locator('#importCloseBtn').click();
+    await page.locator('#btn-export').click();
+    const current = JSON.parse(await page.locator('#exportPreview').inputValue());
+    expect(current.entries).toEqual(previous.entries);
+    expect(current.goals).toEqual(previous.goals);
+  });
+}
+
+test('o formulario preserva metadados sanitizados no estado canonico', async ({ page }) => {
+  await installDeterministicData(page);
+  await page.route('https://mempool.space/**', (route) => route.abort());
+  await page.goto('/index.html');
+
+  await page.getByRole('button', { name: 'Novo aporte', exact: true }).click();
+  await page.locator('#tx-date').fill('2026-09-21');
+  await page.locator('#tx-price').fill('50000');
+  await page.locator('#tx-sats').fill('200000');
+  await page.locator('#tx-fiat').fill('100');
+  await page.locator('.tx-form-extra-fields').evaluate((element) => {
+    element.hidden = false;
+  });
+  await page.locator('#tx-exchange').fill('Kraken');
+  await page.locator('#tx-strategy').fill('dca');
+  await page.locator('#tx-tags').fill('cold,long-term');
+  await page.locator('#tx-wallet').fill('bc1-test-wallet');
+  await page.locator('#tx-txid').fill('a'.repeat(64));
+  await page.locator('#tx-add').click();
+
+  await expect
+    .poll(() =>
+      page.evaluate((key) => {
+        const saved = JSON.parse(localStorage.getItem(key));
+        const entry = saved.txs.find((tx) => tx.date === '2026-09-21');
+        return entry
+          ? {
+              exchange: entry.exchange,
+              strategy: entry.strategy,
+              tags: entry.tags,
+              wallet: entry.wallet,
+              txid: entry.txid,
+            }
+          : null;
+      }, STORAGE_KEY)
+    )
+    .toEqual({
+      exchange: 'Kraken',
+      strategy: 'dca',
+      tags: ['cold', 'long-term'],
+      wallet: 'bc1-test-wallet',
+      txid: 'a'.repeat(64),
+    });
+});

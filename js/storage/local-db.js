@@ -37,6 +37,22 @@ export function backupLocalData(sourceKey = 'btcJournalV1') {
   }
 }
 
+export function saveStateWithBackups(state, { lsKey = DEFAULT_LS_KEY, backupKeys = [lsKey] } = {}) {
+  try {
+    const uniqueKeys = Array.from(new Set(backupKeys.filter(Boolean)));
+    for (const sourceKey of uniqueKeys) {
+      if (localStorage.getItem(sourceKey) !== null && !backupLocalData(sourceKey)) {
+        return { ok: false, stage: 'backup', sourceKey };
+      }
+    }
+    if (!saveState(state, lsKey)) return { ok: false, stage: 'save', sourceKey: lsKey };
+    return { ok: true };
+  } catch (err) {
+    console.error('saveStateWithBackups error', err);
+    return { ok: false, stage: 'backup', sourceKey: null };
+  }
+}
+
 export function listBackups(prefix = DEFAULT_BACKUP_PREFIX) {
   const keys = [];
   try {

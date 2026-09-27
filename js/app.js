@@ -5,7 +5,7 @@ import { satsFrom, pmMedio, satsToBtc } from './core/calculations.js';
 import {
   loadState as storageLoadState,
   saveState as storageSaveState,
-  backupLocalData,
+  saveStateWithBackups,
 } from './storage/local-db.js';
 import { detectOldKey, migrateV1ToV3 } from './storage/migrations.js';
 import {
@@ -903,8 +903,9 @@ function loadState() {
 }
 
 function saveState() {
+  let saved = false;
   try {
-    storageSaveState(state, LS_KEY);
+    saved = storageSaveState(state, LS_KEY);
   } catch (e) {
     console.error('saveState error', e);
   }
@@ -913,6 +914,7 @@ function saveState() {
   } catch (err) {
     console.warn('goals state sync error', err);
   }
+  return saved;
 }
 
 const fmtBRL = (v) =>
@@ -1689,25 +1691,32 @@ function createEntryFromNormalized(normalized, meta = {}) {
     fee: normalized.fee ?? 0,
     btcAmount: satsToBtc(normalized.sats ?? 0),
     sats: normalized.sats ?? 0,
-    txid: meta.txid || '',
-    wallet: meta.wallet || '',
-    status: meta.status || 'manual',
-    strategy: meta.strategy || '',
+    txid: normalized.txid ?? meta.txid ?? '',
+    wallet: normalized.wallet ?? meta.wallet ?? '',
+    status: normalized.txid || meta.txid ? TXID_STATUS.PENDING : TXID_STATUS.MANUAL,
+    strategy: normalized.strategy ?? meta.strategy ?? '',
     note: normalized.note ?? meta.note ?? '',
     createdAt: meta.createdAt || now,
     updatedAt: meta.updatedAt || now,
   });
   const merged = {
     ...entry,
-    ...meta,
-    btcPrice: entry.btcPrice,
-    fiatAmount: entry.fiatAmount,
-    schemaVersion: SCHEMA_VERSION,
+    closed: Boolean(normalized.closed ?? meta.closed ?? entry.closed),
+    weight: normalized.weight ?? meta.weight ?? null,
+    exchange: normalized.exchange ?? meta.exchange ?? entry.exchange ?? '',
+    type: normalized.type ?? meta.type ?? entry.type ?? 'buy',
+    tags: Array.isArray(normalized.tags)
+      ? normalized.tags.slice(0, 10)
+      : Array.isArray(meta.tags)
+        ? meta.tags.slice(0, 10)
+        : [],
+    metadata:
+      meta.metadata && typeof meta.metadata === 'object' && !Array.isArray(meta.metadata)
+        ? { ...meta.metadata }
+        : entry.metadata,
   };
   merged.price = merged.btcPrice;
   merged.fiat = merged.fiatAmount;
-  merged.closed = Boolean(normalized.closed ?? meta.closed ?? merged.closed);
-  merged.weight = normalized.weight ?? meta.weight ?? null;
   if (typeof merged.exchange !== 'string') merged.exchange = '';
   const normalizedExchange =
     typeof normalized.exchange === 'string' ? normalized.exchange : undefined;
@@ -1991,7 +2000,21 @@ function bindForm() {
       return;
     }
     const baseId = editingTxId || uid();
-    const normalized = normalizeEntry({ id: baseId, date, sats, price, fiat, fee, note });
+    const normalized = normalizeEntry({
+      id: baseId,
+      date,
+      sats,
+      price,
+      fiat,
+      fee,
+      note,
+      exchange,
+      type,
+      txid: txidValue,
+      wallet: walletValue,
+      strategy: strategyValue,
+      tags: tagList,
+    });
     if (!normalized) {
       setFormError('Falha ao normalizar a entrada. Verifique os valores.');
       return;
@@ -2261,24 +2284,33 @@ function applyPendingImport() {
     showMessage('Nenhum arquivo pronto para importação.', 'warn');
     return;
   }
-  try {
-    backupLocalData(LS_KEY);
-  } catch (err) {
-    console.warn('backupLocalData import failed', err);
+  const candidate = {
+    ...state,
+    txs: pendingImportPayload.entries,
+    goals: pendingImportPayload.goals
+      ? hydrateGoalsState(pendingImportPayload.goals)
+      : createEmptyGoalsState(),
+    vs: pendingImportPayload.vs || state.vs,
+  };
+  const persisted = saveStateWithBackups(candidate, { lsKey: LS_KEY, backupKeys: [LS_KEY] });
+  if (!persisted.ok) {
+    showMessage(
+      persisted.stage === 'backup'
+        ? 'A importação foi cancelada porque não foi possível criar o backup local.'
+        : 'A importação não foi aplicada porque o armazenamento local recusou a gravação.',
+      'error'
+    );
+    return;
   }
-  state.txs = pendingImportPayload.entries;
+  state.txs = candidate.txs;
+  state.goals = candidate.goals;
+  state.vs = candidate.vs;
   if (pendingImportPayload.vs) {
-    state.vs = pendingImportPayload.vs;
     const select = document.getElementById('vsCurrency');
     if (select) select.value = pendingImportPayload.vs;
   }
-  if (pendingImportPayload.goals) {
-    state.goals = hydrateGoalsState(pendingImportPayload.goals);
-  } else {
-    state.goals = createEmptyGoalsState();
-  }
   goalsController.setGoalsState(state.goals);
-  saveState();
+  goalsController.setEntries(state.txs);
   renderAll();
   const invalidMsg = pendingImportPayload.invalidCount
     ? ` (${pendingImportPayload.invalidCount} inválida${pendingImportPayload.invalidCount === 1 ? '' : 's'} ignorada${pendingImportPayload.invalidCount === 1 ? '' : 's'})`
@@ -2320,11 +2352,6 @@ async function handleImportFile(file) {
         const source = sanitized.sources?.[index] || {};
         const canonical = createEntryFromNormalized(entry, source);
         if (!canonical) return null;
-        if (source.validation && typeof source.validation === 'object') {
-          canonical.validation = { ...source.validation };
-        }
-        if (source.status) canonical.status = source.status;
-        if (source.txidLastCheckedAt) canonical.txidLastCheckedAt = source.txidLastCheckedAt;
         return canonical;
       })
       .filter(Boolean);
@@ -2433,8 +2460,7 @@ function detectAndOfferMigration() {
   try {
     const old = detectOldKey('btcJournalV1');
     if (!old) return;
-    const existingState = storageLoadState(LS_KEY) || {};
-    const hasNew = Array.isArray(existingState?.txs) && existingState.txs.length > 0;
+    const hasNew = localStorage.getItem(LS_KEY) !== null;
     const proceed = confirm(
       'Dados antigos detectados (btcJournalV1). Deseja migrar para o novo formato? Será criado um backup antes.'
     );
@@ -2448,12 +2474,6 @@ function detectAndOfferMigration() {
         return;
       }
     }
-    // criar backup via helper para não perder dados legados
-    try {
-      backupLocalData('btcJournalV1');
-    } catch (e) {
-      console.warn('Backup antigo falhou', e);
-    }
     const migrated = migrateV1ToV3(old);
     // Suportar array de entradas ou object { entries: [...] }
     const payload = Array.isArray(migrated?.txs) ? { entries: migrated.txs } : null;
@@ -2466,13 +2486,34 @@ function detectAndOfferMigration() {
       showMessage('Migração detectou entradas inválidas. Nenhuma alteração aplicada.', 'error');
       return;
     }
-    // Aplicar migracao: mapear para txs minimal
-    state.txs = res.entries
-      .map((entry, index) => createEntryFromNormalized(entry, res.sources?.[index]))
-      .filter(Boolean);
-    state.goals = createEmptyGoalsState();
+    if (res.invalid.length > 0) {
+      showMessage('Migração detectou entradas inválidas. Nenhuma alteração aplicada.', 'error');
+      return;
+    }
+    const candidate = {
+      ...state,
+      txs: res.entries
+        .map((entry, index) => createEntryFromNormalized(entry, res.sources?.[index]))
+        .filter(Boolean),
+      goals: createEmptyGoalsState(),
+    };
+    const persisted = saveStateWithBackups(candidate, {
+      lsKey: LS_KEY,
+      backupKeys: hasNew ? ['btcJournalV1', LS_KEY] : ['btcJournalV1'],
+    });
+    if (!persisted.ok) {
+      showMessage(
+        persisted.stage === 'backup'
+          ? 'Migração cancelada: não foi possível criar todos os backups.'
+          : 'Migração não aplicada: o armazenamento local recusou a gravação.',
+        'error'
+      );
+      return;
+    }
+    state.txs = candidate.txs;
+    state.goals = candidate.goals;
     goalsController.setGoalsState(state.goals);
-    saveState();
+    goalsController.setEntries(state.txs);
     renderAll();
     showMessage('Migração concluída com sucesso. Backup criado.', 'success');
   } catch (err) {
