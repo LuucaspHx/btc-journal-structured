@@ -72,6 +72,26 @@ describe('storage/local-db', () => {
     errorSpy.mockRestore();
   });
 
+  test('save failure preserves the previous state and its successful backup', () => {
+    const previous = JSON.stringify({ txs: [{ id: 'before' }] });
+    localStorage.setItem('journal', previous);
+    jest.useFakeTimers().setSystemTime(new Date('2025-01-01T00:00:00.000Z'));
+    const originalSetItem = localStorage.setItem.bind(localStorage);
+    localStorage.setItem = (key, value) => {
+      if (key === 'journal') throw new Error('quota');
+      originalSetItem(key, value);
+    };
+    const errorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    try {
+      expect(saveStateWithBackups({ txs: [{ id: 'after' }] }, { lsKey: 'journal' }))
+        .toEqual({ ok: false, stage: 'save', sourceKey: 'journal' });
+      expect(localStorage.getItem('journal')).toBe(previous);
+      expect(localStorage.getItem('journal.bak.2025-01-01T00-00-00-000Z')).toBe(previous);
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
   test('listBackups returns keys ordered desc', () => {
     localStorage.setItem('btcJournalV1.bak.2024-A', '[]');
     localStorage.setItem('btcJournalV1.bak.2025-B', '[]');
