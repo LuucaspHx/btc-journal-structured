@@ -177,6 +177,42 @@ test('o comando partilhado de exportacao abre o modal canonico', async ({ page }
   await expect(page.locator('#exportPreview')).toHaveValue(/"txs"/);
 });
 
+for (const stage of ['backup', 'save']) {
+  test(`importacao preserva disco e memoria quando ${stage} falha`, async ({ page }) => {
+    await installDeterministicData(page);
+    await page.goto('/index.html');
+    await page.locator('#btn-export').click();
+    const previous = JSON.parse(await page.locator('#exportPreview').inputValue());
+    await page.keyboard.press('Escape');
+    const previousStored = await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEY);
+    await page.locator('#file-import').setInputFiles({
+      name: 'synthetic-replacement.json',
+      mimeType: 'application/json',
+      buffer: Buffer.from(JSON.stringify({ entries: [{ ...stateFixture.txs[0], id: 'replacement' }] })),
+    });
+    await expect(page.locator('#importApplyBtn')).toBeEnabled();
+    await page.evaluate(({ key, stage }) => {
+      const original = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (name, value) {
+        if (stage === 'backup' ? name.startsWith(`${key}.bak.`) : name === key) {
+          throw new DOMException('Synthetic quota failure', 'QuotaExceededError');
+        }
+        return original.call(this, name, value);
+      };
+    }, { key: STORAGE_KEY, stage });
+    await page.locator('#importApplyBtn').click();
+    await expect(page.locator('#messageContainer')).toContainText(
+      stage === 'backup' ? 'não foi possível criar o backup' : 'armazenamento local recusou'
+    );
+    expect(await page.evaluate((key) => localStorage.getItem(key), STORAGE_KEY)).toBe(previousStored);
+    await page.locator('#importCloseBtn').click();
+    await page.locator('#btn-export').click();
+    const current = JSON.parse(await page.locator('#exportPreview').inputValue());
+    expect(current.entries).toEqual(previous.entries);
+    expect(current.goals).toEqual(previous.goals);
+  });
+}
+
 test('o formulario preserva metadados sanitizados no estado canonico', async ({ page }) => {
   await installDeterministicData(page);
   await page.route('https://mempool.space/**', (route) => route.abort());
