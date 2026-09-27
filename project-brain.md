@@ -177,12 +177,12 @@ Invariantes praticos:
   - mempool.space
 
 ## Testes existentes
-Suite local validada em 2026-07-26 com `npm test -- --runInBand`:
-- 23 suites ok
-- 145 testes ok
+Suite validada no CI em 2026-09-18 com `npm test`:
+- 25 suites ok
+- 151 testes ok
 
 Baseline responsiva validada com `npm run test:e2e`:
-- 7 testes em Chromium: seis viewports (320x720, 390x844, 768x1024, 844x390, 1024x768 e 1440x900) e wiring real do comando de exportacao
+- 8 testes em Chromium: seis viewports (320x720, 390x844, 768x1024, 844x390, 1024x768 e 1440x900), wiring real do comando de exportacao e isolamento do Security Center
 - todas as secoes sem overflow global ou erros de runtime
 - controlos visiveis em 320/390 com alvo minimo de 44x44 px
 - CoinGecko isolado por fixtures deterministicas no teste
@@ -306,6 +306,17 @@ Observacao:
 - A ausencia do prototipo bloqueia `dashboard-model.js` definitivo e toda integracao visual, mas nao bloqueia a extracao pura de `computePortfolioSummary()` depois de a CSP estar resolvida.
 - O agregado atual esta protegido por characterization tests para carteira vazia, fees, posicoes fechadas, preco indisponivel, P&L positivo/negativo/zero, lista completa versus filtrada e 64 microaportes convertidos de BTC para sats com floor por entrada.
 - A nova Main Page so se torna a entrada padrao depois de paridade funcional e regressao desktop/mobile, storage, migracao, import/export, metas e preco.
+
+## Security Center / BBOT (V1 em revisão)
+
+- A integração BBOT é um subsistema independente de Security / Infrastructure.
+- O browser não executa BBOT; consome apenas JSON/JSONL previamente produzido em ambiente autorizado.
+- Namespace próprio: `js/security/*` e `js/ui/security/*`.
+- O modelo interno normaliza eventos BBOT e preserva relações de descoberta para futura visualização em grafo.
+- Estado V1 é efêmero e separado; não entra em `btc_journal_state_v3`, migrations, import/export financeiro ou cálculos de portfólio.
+- O Security Center aceita fixture interna e import de arquivo local, com limite de 10 MB.
+- Histórico/comparação, alertas, health score, backend e execução agendada de BBOT permanecem fora desta primeira versão.
+- Gate de segurança: apenas infraestrutura própria, laboratórios ou recursos explicitamente autorizados; nenhuma execução automática de presets agressivos.
 
 ## Prioridades atuais
 1. Localizar/importar e inventariar o codigo-fonte do prototipo Main Page.

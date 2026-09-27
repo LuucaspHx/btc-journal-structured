@@ -18,17 +18,18 @@ function createElement(dataset = {}) {
 }
 
 function createRoot() {
-  const buttons = ['chart', 'summary', 'entry'].map((section) =>
+  const buttons = ['chart', 'summary', 'entry', 'security'].map((section) =>
     createElement({ section })
   );
   const panels = [
     createElement({ sectionPanel: 'chart' }),
     createElement({ sectionPanel: 'summary' }),
     createElement({ sectionPanel: 'entry' }),
+    createElement({ sectionPanel: 'security' }),
   ];
   const listeners = new Map();
   const targets = Object.fromEntries(
-    ['chartSection', 'summarySection', 'entrySection'].map((id) => [
+    ['chartSection', 'summarySection', 'entrySection', 'securitySection'].map((id) => [
       id,
       { scrollIntoView: jest.fn() },
     ])
@@ -58,8 +59,21 @@ describe('ui/section-nav', () => {
     expect(buttons[1].classList.contains('active')).toBe(true);
     expect(buttons[1].getAttribute('aria-pressed')).toBe('true');
     expect(buttons[0].getAttribute('aria-pressed')).toBe('false');
-    expect(panels.map((panel) => panel.hidden)).toEqual([true, false, true]);
+    expect(panels.map((panel) => panel.hidden)).toEqual([true, false, true, true]);
     expect(targets.summarySection.scrollIntoView).toHaveBeenCalledWith({
+      behavior: 'auto',
+      block: 'start',
+    });
+  });
+
+  test('ativa o Security Center pelo mesmo contrato público', () => {
+    const { buttons, panels, root, targets } = createRoot();
+
+    expect(activateSection('security', { root, behavior: 'auto' })).toBe(true);
+
+    expect(buttons[3].classList.contains('active')).toBe(true);
+    expect(panels.map((panel) => panel.hidden)).toEqual([true, true, true, false]);
+    expect(targets.securitySection.scrollIntoView).toHaveBeenCalledWith({
       behavior: 'auto',
       block: 'start',
     });
@@ -88,12 +102,12 @@ describe('ui/section-nav', () => {
     const cleanup = bindSectionNavigation(root);
 
     expect(buttons[0].classList.contains('active')).toBe(true);
-    expect(panels.map((panel) => panel.hidden)).toEqual([false, true, true]);
+    expect(panels.map((panel) => panel.hidden)).toEqual([false, true, true, true]);
     expect(targets.chartSection.scrollIntoView).not.toHaveBeenCalled();
 
     listeners.get('click')({ target: { closest: () => buttons[2] } });
     expect(buttons[2].classList.contains('active')).toBe(true);
-    expect(panels.map((panel) => panel.hidden)).toEqual([true, true, false]);
+    expect(panels.map((panel) => panel.hidden)).toEqual([true, true, false, true]);
 
     expect(bindSectionNavigation(root)).toEqual(expect.any(Function));
     expect(listeners.size).toBe(1);

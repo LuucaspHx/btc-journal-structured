@@ -1,0 +1,16 @@
+{
+  "scan": {
+    "target": "btcjournal.app",
+    "timestamp": "2026-09-18T12:00:00Z",
+    "source": "example"
+  },
+  "assets": [
+    { "type": "domain", "value": "btcjournal.app" },
+    { "type": "subdomain", "value": "www.btcjournal.app" },
+    { "type": "subdomain", "value": "api.btcjournal.app" },
+    { "type": "subdomain", "value": "staging.btcjournal.app" },
+    { "type": "service", "host": "www.btcjournal.app", "port": 443, "protocol": "https" },
+    { "type": "service", "host": "api.btcjournal.app", "port": 443, "protocol": "https" },
+    { "type": "service", "host": "staging.btcjournal.app", "port": 443, "protocol": "https" }
+  ]
+}
