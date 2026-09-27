@@ -1,336 +1,61 @@
-# BTC Journal - Project Brain
+# BTC Journal — Project Brain
 
-## ⚖️ Regra de Ouro para Agentes
+Este documento guarda decisões duráveis, limites do produto e questões abertas. O estado técnico deve sempre ser confirmado no filesystem, no Git e nos workflows.
 
-**Estado técnico = filesystem + git. Brain = decisões + contexto. Nunca ao contrário.**
+## Propósito e limites
 
-- Verificar filesystem antes de reportar qualquer estado
-- Ver `docs/DEFINITION_OF_DONE.md` antes de fechar qualquer milestone
-- Repo canónico: `/Users/lucas_phx/Documents/btc-journal-structured`
+- O produto é um diário pessoal de Bitcoin orientado a satoshis.
+- A SPA roda sem backend e mantém o estado principal no `localStorage`.
+- CoinGecko fornece preços; mempool.space fornece evidência on-chain de TXIDs.
+- Privacidade local e portabilidade dos dados são requisitos do produto.
+- Desktop é a superfície principal. A mesma engine deve funcionar em telas menores.
+- O visual pretendido é escuro, denso e premium, com laranja Bitcoin e foco em dados.
 
-## Visao geral
-- Aplicacao web estatica (SPA) para registrar aportes em Bitcoin, acompanhar custo medio, lucro/prejuizo, auditoria de TXIDs e metas em sats.
-- Nao existe backend nem banco remoto. O estado principal vive no `localStorage` do navegador.
-- O projeto depende de APIs publicas no cliente:
-  - CoinGecko para preco atual, historico e OHLC.
-  - mempool.space para validar TXIDs on-chain.
-- O codigo esta parcialmente modularizado, mas `js/app.js` ainda concentra quase todo o runtime da UI.
+## Decisões técnicas
 
-## Mapa mental rapido de Git para este projeto
-- `working tree`: seus arquivos locais agora.
-- `branch`: uma linha de trabalho. Ex.: feature nova, refactor, correcao.
-- `commit`: um checkpoint nomeado da branch.
-- `push`: envia os commits locais para o GitHub.
-- `pull request (PR)`: pedido para revisar e integrar uma branch em outra.
-- `merge`: incorporacao final da branch no destino.
+- `btc_journal_state_v3` e `SCHEMA_VERSION = 3` são os contratos persistidos atuais.
+- Regras de domínio devem permanecer independentes de DOM, rede e storage.
+- `js/app.js` é a composition root; extrações devem reduzir sua responsabilidade por contratos pequenos e testáveis.
+- Módulos de UI recebem callbacks e snapshots. Eles não mantêm um segundo estado de domínio.
+- Desktop e mobile compartilham estado, comandos e cálculos.
+- Importações e migrações só substituem o estado depois de backup e persistência bem-sucedidos.
+- JSON é o formato de backup recuperável. CSV é um formato tabular de interoperabilidade.
+- GitHub Pages publica `dist/` somente a partir de `main`.
 
-Fluxo basico que voce vai repetir:
-1. `git status` - ver o que mudou.
-2. `git switch -c nome-da-branch` - criar uma branch nova quando necessario.
-3. `git add <arquivos>` - escolher o que entra no commit.
-4. `git commit -m "mensagem clara"` - salvar checkpoint.
-5. `git push -u origin nome-da-branch` - publicar no GitHub.
-6. Abrir PR da branch publicada para a branch de destino.
+## Invariantes de dados
 
-## Arquitetura atual
-- `index.html` e o shell principal da SPA.
-- `css/style.css` define o visual, layout, modais, cards, auditoria, metas e grafico.
-- `js/app.js` faz boot, bind de eventos, renderizacao, persistencia, import/export, filtros, metas, auditoria e integracoes externas.
-- `js/core/*` concentra regras puras de negocio:
-  - `schema.js`: shape canonico da transacao e `SCHEMA_VERSION = 3`.
-  - `calculations.js`: conversoes BTC/sats e preco medio.
-  - `portfolio.js`: agregado puro de sats, custo, preco medio, valor atual e P&L.
-  - `validators.js`: validacao de formulario e ponte para sanitizacao de import.
-  - `goals.js`: metas em sats, filtros por strategy/tags e catalogos.
-  - `audit.js`: metricas de auditoria e prioridade por status.
-- `js/ui/import-export/*` agora separa o fluxo de import/export em helpers, render e bind, mantendo a orquestracao no `js/app.js`.
-- `js/storage/*` cuida do `localStorage` e da migracao do legado.
-- `js/services/txid-service.js` valida TXIDs contra o explorer.
-- `js/services/http.js` centraliza fetch com timeout/abort e normalizacao de falhas.
-- `js/ui/section-nav.js` concentra a navegacao entre paineis sem script inline no HTML e expoe `activateSection()` para atalhos programaticos.
-- `js/ui/chart/helpers.js` concentra dados puros dos pins e a annotation de target price.
-- `js/features/goals-controller.js` controla metas, progresso e catalogos.
-- `js/import-sanitizer.js` normaliza imports legados e formatos externos.
-- `planilha.html` parece ser uma versao/experimento antigo; o botao correspondente na UI principal esta desativado.
+- Valores em satoshis persistidos devem ser inteiros seguros e não negativos.
+- Importação deve canonizar campos antes de expô-los ao runtime ou ao DOM.
+- Uma migração inválida deve falhar inteira; não pode descartar linhas silenciosamente.
+- Dados derivados de validação remota não devem ser aceitos como autoridade em um arquivo importado.
+- URLs exibidas pela interface devem ser construídas a partir de provedores e identificadores validados.
+- Toda operação destrutiva precisa preservar uma cópia recuperável do estado anterior.
 
-## Fluxo real da aplicacao
-1. `boot()` carrega estado salvo, hidrata metas, restaura modo do grafico e tenta detectar migracao de `btcJournalV1`.
-2. O formulario de aporte valida dados com `validateTransaction()`, normaliza com `normalizeEntry()` e converte para shape canonico com `createEntryFromNormalized()`.
-3. O estado e salvo em `btc_journal_state_v3` via `saveState()`.
-4. A UI renderiza:
-  - KPIs principais
-  - filtros
-  - tabela de transacoes
-  - grafico historico
-  - painel de auditoria
-  - painel de metas
-5. Se houver TXID, o app agenda validacao automatica contra mempool.space.
-6. Export/import preserva transacoes, moeda selecionada e metas.
+## Questões de produto ainda abertas
 
-## Estado persistido
-Chave principal:
+Estas decisões afetam resultados financeiros e precisam de uma especificação explícita antes de mudanças no código:
 
-```json
-{
-  "txs": [],
-  "goals": {
-    "list": [],
-    "activeGoalId": null,
-    "lastComputedAt": null
-  },
-  "vs": "usd"
-}
-```
+1. Como `buy`, `sell` e `transfer` alteram saldo, custo e metas.
+2. Se fees entram no custo por linha, no custo agregado ou em ambos.
+3. Como tratar carteiras com mais de uma moeda fiduciária.
+4. Qual regra de arredondamento converte BTC e fiat para satoshis.
+5. Se filtros da tabela alteram somente a tabela ou também os KPIs.
+6. Como resolver edições concorrentes em duas abas.
 
-Observacoes importantes:
-- O storage canonico usa `btc_journal_state_v3`.
-- O legado observado pelo app e `btcJournalV1`.
-- Backups de migracao/import sao gravados com chaves derivadas no proprio `localStorage`.
-- Entradas antigas podem chegar em shape legado (`price`, `fiat`); o runtime tenta canonizar para `btcPrice` e `fiatAmount`.
+## Riscos conhecidos
 
-## Shape canonico das transacoes
-Campos mais importantes de cada `tx`:
-- identificacao: `id`, `schemaVersion`, `createdAt`, `updatedAt`
-- valores: `sats`, `btcAmount`, `btcPrice`, `fiatAmount`, `fee`, `fiatCurrency`
-- classificacao: `type`, `exchange`, `strategy`, `tags`, `note`
-- prova on-chain: `txid`, `wallet`, `status`, `validation`
+- O navegador pode apagar `localStorage`; o usuário depende de exportações periódicas.
+- `js/app.js` ainda combina coordenação, renderização e partes do ciclo de vida do gráfico.
+- Falhas das APIs externas degradam preço, histórico e auditoria.
+- A semântica financeira incompleta pode produzir totais internamente consistentes, porém incorretos para a intenção do usuário.
+- Documentos e ZIPs históricos são evidência de contexto, não fonte de verdade do runtime atual.
 
-Invariantes praticos:
-- novas entradas devem passar por `validateTransaction()`
-- shape final deve passar por `createDefaultEntry()` ou `ensureCanonicalEntry()`
-- `tags` sao deduplicadas e limitadas
-- `strategy` e texto livre, usado tambem nas metas
+## Fontes de verdade
 
-## Superficies da UI
-- Topbar com moeda, ano, modo do grafico, limpar dados e acesso ao grafico expandido.
-- Formulario principal para criar/editar aportes, incluindo strategy, tags, TXID e wallet.
-- Filtros por data, sats, preco, tipo, busca textual e ordenacao.
-- Tabela de transacoes com acoes de editar/remover/validar.
-- KPIs de investido, sats, preco medio, valor atual e P/L.
-- Painel de auditoria com distribuicao por status, filtros e agrupamentos por wallet, exchange e strategy.
-- Painel de metas com modal, presets, filtros por strategy/tags e detalhe das entradas que contam para a meta.
-- Exportacao em JSON e CSV; importacao com pre-visualizacao e migracao de formatos antigos.
-- Grafico principal e grafico live.
+- Código e estrutura atuais: filesystem e Git.
+- Pipeline executável: `.github/workflows/` e `package.json`.
+- Arquitetura observada: `docs/architecture-map.md`.
+- Critérios de entrega: `docs/DEFINITION_OF_DONE.md`.
+- Processo de mudanças: `docs/refactor-playbook.md`.
 
-## Modulos e responsabilidades
-- `js/core/schema.js`
-  - define `SCHEMA_VERSION`
-  - cria a entrada canonica
-  - aplica defaults para tipo, moeda, tags, datas e IDs
-- `js/core/calculations.js`
-  - calcula sats a partir de fiat/preco
-  - converte sats para BTC
-  - calcula preco medio com fee
-- `js/core/portfolio.js`
-  - calcula o resumo agregado de uma lista de entradas
-  - exclui posicoes fechadas e inclui fees no custo
-  - nao conhece DOM, filtros, storage ou formatacao
-- `js/core/validators.js`
-  - valida payload do formulario
-  - reexporta normalizacao/sanitizacao do import
-- `js/import-sanitizer.js`
-  - aceita arrays, `{ entries }` e `{ txs }`
-  - limpa numeros, datas, tipos e campos textuais
-  - ainda trabalha em shape legado/minimo
-- `js/ui/import-export/helpers.js`
-  - normaliza shapes de import
-  - prepara payload a partir de texto JSON/legado
-  - protege CSV contra injection basica
-- `js/ui/import-export/render.js`
-  - renderiza preview de exportacao
-  - renderiza preview de importacao
-  - abre/fecha modais de import/export
-- `js/ui/import-export/bind.js`
-  - concentra listeners do fluxo de import/export
-  - usa callbacks para evitar ciclo com o `app.js`
-  - expoe cleanup para futuro rebind/hot-reload
-- `js/storage/local-db.js`
-  - load/save do estado
-  - backup/listagem/restauro de snapshots no `localStorage`
-- `js/storage/migrations.js`
-  - detecta `btcJournalV1`
-  - converte payload antigo para `{ txs: [...] }`
-- `js/services/txid-service.js`
-  - resolve rede
-  - monta URL do explorer
-  - consulta transacao
-  - decide entre `manual`, `pending`, `confirmed`, `invalid`, `mismatch`, `inconclusive`
-- `js/core/audit.js`
-  - agrega totais e percentuais de prova
-  - ordena prioridade para auditoria
-- `js/core/goals.js`
-  - normaliza metas
-  - calcula progresso
-  - filtra entradas que contam para cada meta
-  - gera catalogos de strategy/tags
-- `js/features/goals-controller.js`
-  - mantem metas ativas
-  - recalcula progresso quando metas ou entradas mudam
-  - expõe snapshot pronto para a UI
-
-## Dependencias externas
-- `Chart.js` via CDN no HTML.
-- `date-fns` e adapter de Chart.js via CDN.
-- `jest` para testes locais.
-- APIs publicas:
-  - CoinGecko
-  - mempool.space
-
-## Testes existentes
-Suite local validada em 2026-07-26 com `npm test -- --runInBand`:
-- 23 suites ok
-- 145 testes ok
-
-Baseline responsiva validada com `npm run test:e2e`:
-- 7 testes em Chromium: seis viewports (320x720, 390x844, 768x1024, 844x390, 1024x768 e 1440x900) e wiring real do comando de exportacao
-- todas as secoes sem overflow global ou erros de runtime
-- controlos visiveis em 320/390 com alvo minimo de 44x44 px
-- CoinGecko isolado por fixtures deterministicas no teste
-
-Cobertura funcional atual:
-- `tests/core-schema.test.js`: shape canonico e defaults
-- `tests/core-calculations.test.js`: sats/BTC/preco medio
-- `tests/core-portfolio.test.js`: agregado, fees, posicoes fechadas, P&L, filtros e microaportes
-- `tests/core-validators.test.js`: validacao e ponte de import
-- `tests/import-sanitizer.test.js`: sanitizacao de payloads importados
-- `tests/import-export-helpers.test.js`: helpers de import/export
-- `tests/storage-local.test.js`: load/save/backups
-- `tests/migrations.test.js`: migracao do legado
-- `tests/txid-service.test.js`: validacao de TXID e redes
-- `tests/core-audit.test.js`: metricas de auditoria
-- `tests/core-goals.test.js`: metas, filtros e catalogos
-- `tests/goals-controller.test.js`: controlador de metas
-- `tests/price-service.test.js`: polling e cache de preco por moeda
-- `tests/http-service.test.js`: timeout, abort e propagacao de respostas HTTP
-- `tests/retry-policy.test.js`: backoff exponencial, cooldown e reinicio por request
-- `tests/ui-chart-helpers.test.js`: dataset/detalhe dos alfinetes e annotation de target price
-- `tests/ui-chart-config.test.js`: composicao da configuracao do Chart.js
-- `tests/ui-chart-crosshair.test.js`: plugin de crosshair
-- `tests/ui-table-helpers.test.js`: formatacao do P&L por entrada
-- `tests/ui-table-render-stats.test.js`: characterization do resumo visual existente
-- `tests/ui-audit-helpers.test.js`: helpers do painel de auditoria
-- `tests/app-commands.test.js`: registry partilhado de comandos, delegacao e falhas seguras
-- `tests/e2e/responsive.spec.js`: smoke real da SPA em desktop, tablet e mobile
-
-Observacao:
-- Ha um `console.error` esperado no teste de erro da migracao invalida; isso nao derruba a suite.
-
-## Riscos e debito tecnico
-- `js/app.js` esta grande demais e mistura dominio, DOM, fetch, persistencia e renderizacao. E o principal ponto de manutencao dificil.
-- `import-sanitizer.js` ainda opera com shape antigo/minimo, e o runtime precisa reconciliar isso depois com `ensureCanonicalEntry()`.
-- Como tudo roda no browser, falhas de rede nas APIs externas afetam UX e podem parecer bugs locais.
-- OHLC aplica backoff exponencial por periodo/moeda, com fallback para a serie de preco durante o cooldown; manter esta politica ao alterar o modo de velas.
-- Persistencia apenas em `localStorage` significa risco de perda de dados se o usuario limpar o navegador sem exportar backup.
-- Migracoes precisam manter muito cuidado para nao sobrescrever estado atual sem backup.
-
-## Regras operacionais
-- Antes de alterar storage/schema, revisar `createDefaultEntry()`, `ensureCanonicalEntry()` e `saveState()`.
-- Antes de mexer em importacao, revisar tambem `sanitizeImportPayload()`, `normalizeImportShape()` e `migrateV1ToV3()`.
-- Antes de mexer em TXID/auditoria, revisar `validateTxidEntry()` e `computeAuditMetrics()`.
-- Rodar `npm test` a cada rodada relevante.
-- Rodar `npm run test:e2e` quando o diff tocar HTML, CSS, navegacao, layout ou renderizacao visivel.
-- Para validar a UI localmente: `python3 -m http.server 8000` e abrir `http://localhost:8000`.
-
-## Processo oficial
-- O processo operacional oficial agora esta documentado em `docs/refactor-playbook.md`.
-- O mapa tecnico de apoio esta em `docs/architecture-map.md`.
-- Regra de execucao:
-  - um dominio por vez
-  - uma etapa por vez
-  - um commit por etapa
-  - `git diff --stat` antes de commitar
-  - `npm test` obrigatorio por etapa relevante
-- Nenhuma feature nova de medio/grande porte que aumente o acoplamento do runtime principal entra antes de o runtime principal estar sob controle.
-
-## Cadencia documental e snapshots
-- `project-brain.md` e memoria viva; atualizar quando houver:
-  - mudanca relevante de arquitetura
-  - fechamento de etapa importante
-  - mudanca de prioridade
-  - novo risco relevante
-- `docs/architecture-map.md` deve refletir a estrutura tecnica atual e ser atualizado quando houver mudanca real de camadas/modulos.
-- `docs/refactor-playbook.md` e o processo oficial e muda com baixa frequencia.
-- ZIP so deve ser gerado em milestone/snapshot estavel, nunca em microetapa.
-- Um ZIP de revisao tecnica deve representar estado validado, nao apenas estado salvo.
-
-## Marcos entregues
-- Engenharia E1-E5: modularizacao inicial, CI, lint/format, Husky e Definition of Done.
-- M1/M2: dominios de tabela, import/export e auditoria recortados em helpers, render e bind.
-- M3-B: dominio de metas em sats com `strategy`/`tags`, integrado pela PR #3.
-- M4-A: P&L por entrada, servico de preco e alfinetes no grafico; fechamento tecnico em `ff37d85`.
-- Design system: tokens semanticos, bridge de tokens para Chart.js, tipografia Geist, focus-visible e adaptacao mobile.
-- Hardening de entrega: Pages publica apenas `dist/` minimo (`98678a8`).
-- Higiene de testes: Jest ignora worktrees e artefactos locais (`1b123f0`).
-- Seguranca runtime: SRI nos CDNs, navegacao sem script inline, fetch com timeout/abort e limites de importacao (`2551845`).
-- CSP estrita: scripts, fontes, rede, objetos e estilos restritos a origens explicitamente usadas; atributos de estilo estaticos foram migrados para classes e `style-src-attr 'none'` esta ativo (`abfc326`).
-- Target price line: target USD efemero, update live/canonico, guard de moeda e layout mobile validado em 375 px.
-- Estabilidade OHLC: falhas de CoinGecko entram em cooldown com backoff e deixam o grafico de preco como fallback.
-- Refactor de grafico: helpers, datasets e opcoes vivem em `js/ui/chart/helpers.js`; a composicao em `js/ui/chart/config.js`; o crosshair em `js/ui/chart/crosshair.js`.
-- Agregado de portfolio: `computePortfolioSummary()` vive em `js/core/portfolio.js`; o resumo atual consome o contrato puro sem alterar a semantica dos filtros (`4a98fe6`).
-- Baseline responsiva F0: tabelas densas usam scroll interno acessivel, grids podem encolher sem expandir o documento, alvos mobile respeitam 44 px e Playwright bloqueia regressoes em seis viewports.
-
-## Contrato P&L observado
-- `calcEntryPnL()` calcula o P&L por entrada com `fiatAmount`/`fiat` como custo e nao inclui `fee`.
-- Para fees positivas, `pmMedio()` e `computePortfolioSummary()` tratam `fee` como custo adicional (`fiat + fee`) no preco medio e no P&L agregado.
-- Fees negativas sao aceitas pela validacao; `pmMedio()` aplica clamp em zero, enquanto `computePortfolioSummary()` reduz o custo agregado.
-- `normalizeEntry()` preserva os sats informados; quando um import nao fornece sats, deriva-os por `(fiat - fee) / price` e aplica `Math.floor` em sats.
-- A derivacao por fiat pode perder 1 sat por representacao binaria antes do `Math.floor` (por exemplo, 90 unidades fiat a um preco de 10.000 por BTC resultam atualmente em 899.999 sats, nao 900.000).
-- Quando uma entrada so fornece `btcAmount`, `computePortfolioSummary()` converte e aplica `Math.floor` por entrada antes de somar os sats.
-- Estes comportamentos preexistentes nao formam uma semantica unica de fee. O lote de caracterizacao documenta a divergencia sem alterar runtime.
-
-## Decisoes do ciclo Main Page
-- Estrategia de produto: nova UI sobre a engine client-side atual, sem segundo estado, storage, polling ou implementacao paralela de calculos.
-- O Codex e o executor canonico deste ciclo. Claude Code e GPT atuam como revisores consultivos. Nao executar commits concorrentes no mesmo checkout.
-- O resumo da Main Page representa sempre o portfolio completo e ignora os filtros da tabela de transacoes.
-- Calculos agregados de portfolio devem viver em `js/core/portfolio.js`; a composicao do read model da Main Page deve viver em `js/features/dashboard-model.js`.
-- `dashboard-model.js` nao deve reinterpretar nem normalizar fee ate existir uma decisao de produto explicita sobre se `fiat` representa aporte bruto, custo liquido ou custo antes da fee, e se fee negativa representa rebate ou entrada invalida.
-- `renderDashboardFromCurrentState()` sera o unico adaptador do estado atual para a Main Page. Deve ser chamado por `renderAll()`, pela atualizacao do `priceService` e pela subscription de metas.
-- Quando a subscription de metas fornecer um `goalsSnapshot`, esse snapshot tem precedencia sobre a leitura interna de `goalsController.getSnapshot()`. O getter e apenas fallback quando nao houver override.
-- O atalho TXID da Main Page navega para Auditoria/Transacoes; nao expoe validacao individual sem uma transacao selecionada.
-
-## Roadmap desktop + mobile
-- F0 — baseline responsiva e gate E2E: concluido.
-- F1 — localizar/inventariar o prototipo da Main Page e fechar decisoes pendentes de produto, incluindo semantica de fees no dashboard.
-- F2a — concluido: navegacao programatica e registry de comandos partilhados expostos por contratos testaveis, sem estado global.
-- F2b — criar `js/features/dashboard-model.js` sobre `computePortfolioSummary()` e snapshots existentes.
-- F3 — montar uma primeira fatia vertical da Main Page com desktop e mobile no mesmo PR.
-- F4 — ligar atalhos e comandos existentes; nenhum fluxo paralelo de mutacao.
-- F5 — integrar o grafico real, preservando pins, crosshair, OHLC e target price.
-- F6 — manter tabela densa no desktop e oferecer representacao mobile adequada sem duplicar regras de negocio.
-- F7 — regressao funcional, acessibilidade, performance e matriz responsiva completa.
-- F8 — tornar a Main Page padrao apenas depois de paridade e remover fallback legado de forma controlada.
-- A navegacao programatica usa `activateSection()` como contrato publico; o binder e futuros atalhos devem delegar a essa mesma API.
-- `createAppCommands()` cria o registry dentro de `boot()`. A futura UI recebe essa instancia por injecao no binder; o registry nao deve ser publicado em `window` nem convertido num segundo store global.
-- O grafico da Main Page deve reutilizar cache, price service, helpers e configuracao atuais. Nao pode criar polling ou fetch paralelo. O inventario deve decidir explicitamente se a target price line efemera tambem aparece nesse grafico.
-- O codigo-fonte do prototipo Main Page ainda nao foi localizado no filesystem; apenas PDFs/documentos de referencia foram encontrados.
-- A ausencia do prototipo bloqueia `dashboard-model.js` definitivo e toda integracao visual, mas nao bloqueia a extracao pura de `computePortfolioSummary()` depois de a CSP estar resolvida.
-- O agregado atual esta protegido por characterization tests para carteira vazia, fees, posicoes fechadas, preco indisponivel, P&L positivo/negativo/zero, lista completa versus filtrada e 64 microaportes convertidos de BTC para sats com floor por entrada.
-- A nova Main Page so se torna a entrada padrao depois de paridade funcional e regressao desktop/mobile, storage, migracao, import/export, metas e preco.
-
-## Prioridades atuais
-1. Localizar/importar e inventariar o codigo-fonte do prototipo Main Page.
-2. Criar o read model e integrar a Main Page incrementalmente, mantendo a interface atual como fallback ate haver paridade.
-
-Configuracao remota validada em 2026-07-19:
-- GitHub Pages usa build por Actions, HTTPS obrigatorio e publica apenas o `dist/` minimo.
-- A branch padrao remota e `main`.
-- Site publico: `https://luucasphx.github.io/btc-journal-structured/`.
-
-## Estado atual
-
-> Ver `git log --oneline` para estado técnico atual. Este documento não declara o que está feito — o git é a fonte de verdade.
-
-Funcionalidades presentes no código (verificar com `git ls-files js/`):
-- Registro e edição de aportes
-- Filtros, dashboard e gráficos
-- Persistência local versionada (schema v3)
-- Import/export com preview
-- Migração legado → v3
-- Validação de TXID on-chain
-- Metas em sats com strategy/tags
-- UI modularizada: `ui/table/*`, `ui/import-export/*`, `ui/audit/*`
-- Target price USD no grafico, sem persistencia e com guard para outras moedas
-
-## Próximo passo
-
-Localizar o codigo-fonte do prototipo e fechar a semantica de fees para desbloquear `dashboard-model.js` e a integracao visual. Enquanto isso, apenas extracoes independentes, caracterizadas e sem aumento de acoplamento podem avancar.
+Atualize este arquivo apenas quando uma decisão, um limite do produto, uma invariante ou uma questão aberta mudar. Resultados de testes, inventários de arquivos, commits e próximos passos pertencem aos artefatos de entrega, não a esta memória.

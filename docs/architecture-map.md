@@ -1,121 +1,79 @@
-# BTC Journal - Architecture Map
+# BTC Journal — mapa de arquitetura
 
-Atualizado em 2026-07-26.
+Este mapa descreve o runtime observado. O código e os testes prevalecem se houver divergência.
 
-## Visao geral
+## Contexto
 
-- SPA estatica, sem backend ou bundler.
-- `index.html` define o shell e os contratos DOM.
-- `js/app.js` e a composition root e ainda concentra parte relevante do runtime.
-- `localStorage` guarda o estado canonico em `btc_journal_state_v3`.
-- CoinGecko fornece preco/historico/OHLC; mempool.space valida TXIDs.
-- A mesma engine alimenta desktop e mobile. Viewport altera apresentacao, nunca estado ou regra de negocio.
+A aplicação é uma SPA estática, sem backend ou bundler. `index.html` inicia o shell; o estado canônico fica em `localStorage`. CoinGecko fornece preços e mempool.space valida TXIDs. Chart.js e utilitários de data são carregados por CDN.
 
-## Camadas atuais
+## Camadas
 
-### Shell e design system
+| Camada | Arquivos principais | Responsabilidade |
+| --- | --- | --- |
+| Shell e estilo | `index.html`, `css/tokens.css`, `css/style.css` | Estrutura, contratos DOM, tokens e layout responsivo |
+| Composition root | `js/app.js` | Boot, estado em memória, coordenação, persistência e ciclo do gráfico |
+| Domínio puro | `js/core/*` | Schema, cálculos, portfolio, validação, auditoria e metas |
+| Features | `js/features/*` | Comandos e controladores que compõem snapshots para a UI |
+| Infraestrutura | `js/storage/*`, `js/services/*`, `js/import-sanitizer.js` | Storage, migração, rede, retry, preços, TXID e importação |
+| UI modular | `js/ui/*` | Helpers puros, renderização e bind de eventos |
 
-- `index.html`
-- `css/tokens.css`
-- `css/style.css`
+Módulos de domínio não devem depender de DOM, `fetch` ou `localStorage`. Módulos de UI não devem persistir um estado paralelo.
 
-Responsabilidade: estrutura da SPA, IDs consumidos pelos binders, tokens semanticos, layout e adaptacao responsiva. Tabelas densas ficam em regioes de scroll internas para nao expandir o documento.
+## Fluxos críticos
 
-### Composition root
+### Boot e persistência
 
-- `js/app.js`
+1. `boot()` carrega `btc_journal_state_v3`.
+2. O runtime detecta e tenta migrar `btcJournalV1` quando aplicável.
+3. Entradas passam por validação, normalização e canonização.
+4. Uma mutação é persistida antes de ser publicada aos controladores e à UI.
+5. `renderAll()` atualiza as superfícies derivadas.
 
-Responsabilidade: boot, estado em memoria, persistencia, lifecycle do Chart.js e coordenacao entre modulos. Continua sendo o principal hotspot; novos dominios nao devem ser implementados diretamente nele quando puderem entrar por contratos testaveis.
+### Importação e migração
 
-### Dominio puro
+1. O arquivo é interpretado e normalizado.
+2. Todas as entradas precisam ser válidas para formar o estado candidato.
+3. O estado anterior recebe um snapshot recuperável.
+4. O estado candidato é salvo.
+5. Somente então memória, controladores e UI recebem a substituição.
 
-- `js/core/schema.js`
-- `js/core/calculations.js`
-- `js/core/portfolio.js`
-- `js/core/validators.js`
-- `js/core/audit.js`
-- `js/core/goals.js`
+### Serviços externos
 
-Regra: sem DOM, fetch ou `localStorage`. `computePortfolioSummary()` e o contrato agregado compartilhado; consumidores nao devem recalcular portfolio na UI.
+- O serviço de preços consulta e mantém cache por moeda.
+- O serviço de TXID consulta o explorer e converte respostas em estados de auditoria.
+- Timeout, abort e retry pertencem à infraestrutura, não aos componentes visuais.
+- Respostas remotas atualizam dados derivados; elas não substituem o estado canônico inteiro.
 
-### Controladores e read models de feature
+## Estado persistido
 
-- `js/features/goals-controller.js`
-- `js/features/app-commands.js`
-- futuro `js/features/dashboard-model.js`
+```json
+{
+  "txs": [],
+  "goals": {
+    "list": [],
+    "activeGoalId": null,
+    "lastComputedAt": null
+  },
+  "vs": "usd"
+}
+```
 
-Responsabilidade: compor snapshots, comandos e regras puras para consumo da UI. Nao cria um segundo store; recebe dependencias do composition root e devolve contratos derivados. O registry de comandos permanece local a `boot()` e deve ser injetado nos binders consumidores.
+Backups usam chaves separadas no mesmo `localStorage`. Como o armazenamento é local ao navegador, exportar JSON continua sendo a proteção portátil.
 
-### Infraestrutura
+## Hotspots e lacunas
 
-- `js/storage/local-db.js`
-- `js/storage/migrations.js`
-- `js/import-sanitizer.js`
-- `js/services/http.js`
-- `js/services/retry-policy.js`
-- `js/services/price-service.js`
-- `js/services/txid-service.js`
+1. `js/app.js` ainda concentra DOM, estado e ciclo do gráfico.
+2. Importação e migração atravessam schema, storage e UI, com alto impacto potencial sobre dados.
+3. O gráfico combina canvas, rede, estado e plugins.
+4. A troca de moeda precisa manter polling, cache, estado persistido e renderização sincronizados.
+5. A semântica de fees, vendas, transferências e múltiplas moedas ainda exige decisão de produto.
+6. `localStorage` não oferece coordenação automática entre abas.
 
-Responsabilidade: persistencia, compatibilidade de dados, rede, timeout/abort, backoff e integracoes externas.
+## Verificação
 
-### UI modular
+- Jest: `npm test`
+- Lint: `npm run lint`
+- Tokens: `npm run tokens:check:full`
+- SPA real e viewports: `npm run test:e2e`
 
-- `js/ui/section-nav.js` — binder e API publica `activateSection()`
-- `js/ui/table/{helpers,render,bind}.js`
-- `js/ui/audit/{helpers,render,bind}.js`
-- `js/ui/import-export/{helpers,render,bind}.js`
-- `js/ui/chart/{helpers,config,crosshair,tokens,bind}.js`
-
-Padrao: `helpers` mantem logica pura, `render` escreve no DOM, `bind` registra eventos por callbacks e `app.js` coordena. O lifecycle final do Chart.js ainda vive em `app.js`.
-
-## Fluxo de dados
-
-1. `boot()` carrega e migra o estado persistido.
-2. Entradas passam por validacao, normalizacao e canonizacao.
-3. Mutacoes salvam o mesmo estado em `btc_journal_state_v3`.
-4. `renderAll()` e subscriptions atualizam as superficies derivadas.
-5. Servicos externos atualizam preco, grafico e validacao on-chain sem substituir o estado canonico.
-6. Export/import preserva transacoes, moeda e metas.
-
-## Invariantes
-
-- `SCHEMA_VERSION = 3` e `btc_journal_state_v3` permanecem fontes de verdade.
-- Desktop e mobile compartilham engine, comandos e modelos.
-- A Main Page futura representa o portfolio completo, independente dos filtros da tabela.
-- Nenhum modulo de UI persiste estado de dominio por conta propria.
-- Migracoes e imports preservam backup e compatibilidade.
-- Pins, crosshair, OHLC e target price fazem parte do contrato atual do grafico.
-
-## Qualidade e entrega
-
-- Jest cobre dominio, storage, services e helpers: `npm test`.
-- Playwright executa a SPA real em seis viewports e valida o wiring canonico de exportacao: `npm run test:e2e`.
-- O smoke responsivo verifica todas as secoes, overflow global, erros de runtime e alvos tacteis em mobile.
-- O CI instala Chromium e executa Jest + Playwright.
-- O deploy de Pages publica apenas o `dist/` minimo.
-
-## Hotspots
-
-1. `js/app.js`: estado, DOM e lifecycle ainda muito concentrados.
-2. Importacao/migracao: qualquer alteracao pode afetar dados existentes.
-3. Grafico: combina rede, canvas, estado e plugins.
-4. Semantica de fees: P&L por linha e agregado possuem contratos historicos diferentes.
-5. `localStorage`: requer export/backup para mitigar perda local.
-
-## Roadmap arquitetural
-
-1. Manter gates Jest, tokens, lint e Playwright verdes.
-2. Inventariar o prototipo externo antes de moldar a Main Page.
-3. Expor comandos e navegacao por APIs compartilhadas, sem store paralelo.
-4. Criar `dashboard-model.js` como read model puro sobre portfolio, metas e preco.
-5. Entregar cada fatia vertical com desktop e mobile no mesmo PR.
-6. Integrar o grafico existente sem perder plugins ou lifecycle.
-7. Reduzir `app.js` por extracoes pequenas, caracterizadas e reversiveis.
-
-## Fora de escopo imediato
-
-- framework ou bundler novo
-- backend remoto
-- troca da chave/schema de storage
-- segundo aplicativo mobile
-- reescrita total do runtime
+Mudanças visuais exigem Playwright. Mudanças em persistência, migração, importação ou cálculos exigem testes de regressão específicos para falha e preservação do estado anterior.
