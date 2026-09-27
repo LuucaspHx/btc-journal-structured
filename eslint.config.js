@@ -34,6 +34,7 @@ export default [
         getComputedStyle: 'readonly',
         requestAnimationFrame: 'readonly',
         ResizeObserver: 'readonly',
+        TextEncoder: 'readonly',
       },
     },
   },
