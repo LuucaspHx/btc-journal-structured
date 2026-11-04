@@ -67,7 +67,7 @@ describe('MiroFish adapter (somente integração real, sem simulação falsa)', 
     await client.startSimulation('sim_123');
     await client.getRunStatus('sim_123');
     await client.generateReport('sim_123');
-    await client.getReportStatus('report_123');
+    await client.getReportStatus({ taskId: 'task_123', simulationId: 'sim_123' });
     await client.getReport('report_123');
     expect(paths).toEqual([
       '/mirofish/api/simulation/create',
@@ -76,7 +76,7 @@ describe('MiroFish adapter (somente integração real, sem simulação falsa)', 
       '/mirofish/api/simulation/start',
       '/mirofish/api/simulation/sim_123/run-status',
       '/mirofish/api/report/generate',
-      '/mirofish/api/report/generate/status?report_id=report_123',
+      '/mirofish/api/report/generate/status',
       '/mirofish/api/report/report_123',
     ]);
   });
