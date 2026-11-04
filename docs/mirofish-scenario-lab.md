@@ -4,10 +4,13 @@
 
 - Cliente JavaScript isolado em `js/integrations/mirofish-client.js`, apontado por padrão para `/mirofish/api/*` na **mesma origem** do BTC Journal.
 - Chamadas reais do MiroFish para: gerar ontologia a partir de texto fornecido pelo usuário, construir grafo, acompanhar tarefa, criar/preparar/iniciar simulação, acompanhar execução e gerar/ler relatório.
-- Testes unitários do contrato, validação de IDs e proteção contra host externo.
+- Workflow determinístico em `js/integrations/mirofish-flow.js`, com início de cada operação por clique explícito, controles de concorrência e status reais da API.
+- Tela responsiva em `labs/mirofish/index.html`, `lab.css` e `lab.js`, com consentimento, estágio de processamento, IDs efêmeros e relatório renderizado apenas com `textContent`.
+- Testes unitários do contrato/fluxo e testes E2E Playwright com backend **mockado**; não há execução real contra o serviço.
+- O workflow de deploy está preparado para copiar `labs/` para `dist/` **somente quando a branch for mesclada**.
 - Nenhuma alteração em `index.html`, `js/app.js`, schema v3, `btc_journal_state_v3`, preços, filtros, dashboard ou fluxo de aportes.
 
-**Não é uma simulação executada. Não está conectado à interface principal, nem à URL chatgpt.site.** É a primeira etapa técnica de uma integração real. Não existe previsão de preço gerada localmente ou inventada.
+**Não é uma simulação executada. Não há backend conectado, nem integração com a Main Page ou com a URL chatgpt.site.** A página experimental existe apenas nesta branch e não faz solicitações automáticas ao iniciar. Não existe previsão de preço gerada localmente ou inventada.
 
 ## Como funciona o MiroFish (upstream)
 
@@ -23,7 +26,7 @@ Licença upstream: AGPL-3.0. Esta branch não copia/redistribui o código-fonte 
        |
        | usuário insere texto não sensível e autoriza envio
        v
-    Scenario Lab (UI futura, sem consultar saldos por padrão)
+    Scenario Lab (UI experimental disponível nesta branch, sem consultar saldos)
        |
        v
     HTTPS same-origin /mirofish/api/*
@@ -53,7 +56,7 @@ Nunca abrir a porta 5001 diretamente para usuários anônimos. Armazenar LLM_API
 2. `buildGraph(projectId)`: POST `/api/graph/build`. Consultar `getGraphTask(taskId)` até concluir.
 3. `createSimulation({projectId})`: POST `/api/simulation/create`; `prepareSimulation(simulationId)`; consultar `getPrepareStatus(...)`.
 4. `startSimulation(simulationId)`: POST `/api/simulation/start`; acompanhar `getRunStatus(simulationId)`.
-5. `generateReport(simulationId)`; acompanhar `getReportStatus(reportId)`; `getReport(reportId)`.
+5. `generateReport(simulationId)`; acompanhar `getReportStatus({ taskId, simulationId })` via **POST** `/api/report/generate/status`; quando completo, `getReport(reportId)`. O upstream não aceita GET por `report_id` nesse endpoint.
 
 As transições entre etapas devem ser controladas pelos status reais retornados pelo servidor. Não gerar execuções automaticamente após abrir uma página; iniciar uma simulação gera custos.
 
@@ -70,11 +73,11 @@ As transições entre etapas devem ser controladas pelos status reais retornados
 
 1. Executar `npm test -- --runInBand` no checkout completo e validar os novos testes.
 2. Definir o serviço/gateway autenticado que possa operar ao lado da hospedagem do site, respeitando CSP e autenticação.
-3. Criar tela Scenario Lab com fluxo consentido, cancelamento, loading, estados de erro, quotas de execução e resultados rastreáveis.
+3. Avaliar a UI Scenario Lab já criada e adicionar recuperação de sessão, cancelamento de tarefas e limites de gasto no servidor. A UI atualmente oferece status, erros e progresso manual, mas não recupera uma sessão depois de recarregar.
 4. Testar integração real E2E contra uma instalação MiroFish de testes e verificar a versão de API fixada.
 5. Fazer security review, auditoria AGPL-3.0 e testes de isolamento: nenhuma mutação sobre a engine do BTC Journal.
 6. Submeter aprovação do executor canônico (Codex) e mesclar somente depois da suite, E2E e revisão.
 
 ## Status de implementação
 
-**Adapter + testes: entregue na branch isolada. MiroFish backend / gateway / UI / deploy: não implementados.** A branch é intencionalmente um PR draft de integração, preservando o fluxo de executor único do projeto.
+**Entregue na branch:** adaptador, fluxo por etapas, interface experimental e testes unitários/E2E mockados. **Não entregue:** MiroFish backend, gateway autenticado, execução real, interface na Main Page e publicação em produção. O workflow de publicação foi preparado, mas não ativado no site público. O PR continua em draft para revisão do Codex, conforme o fluxo de executor único.
