@@ -1,3 +1,4 @@
+import { jest } from '@jest/globals';
 import { createMiroFishFlow } from '../js/integrations/mirofish-flow.js';
 
 function createClient(overrides = {}) {
