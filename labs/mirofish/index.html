@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; style-src-attr 'none'; connect-src 'self'; img-src 'self' data:; font-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-src 'none'" />
+  <meta name="referrer" content="strict-origin-when-cross-origin" />
+  <title>Scenario Lab — BTC Journal</title>
+  <meta name="description" content="Laboratório experimental de cenários com agentes de IA. Resultados hipotéticos, sem acesso à carteira BTC." />
+  <link rel="stylesheet" href="../../css/tokens.css" />
+  <link rel="stylesheet" href="./lab.css" />
+  <script type="module" src="./lab.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="wordmark" href="../../index.html" aria-label="Voltar ao BTC Journal"><span class="btc-mark">₿</span> BTC JOURNAL <span class="muted-mark">/ LABS</span></a>
+    <span class="header-chip">EXPERIMENTAL</span>
+    <a class="back-link" href="../../index.html">Voltar à carteira</a>
+  </header>
+  <main class="page">
+    <div class="eyebrow"><span class="eyebrow-dot"></span> MIROFISH ENGINE / MULTI-AGENT RESEARCH</div>
+    <div class="hero">
+      <div>
+        <h1>Imagine um evento.<br><span>Observe as reações.</span></h1>
+        <p class="lead">Simule como agentes de IA poderiam reagir a uma hipótese envolvendo Bitcoin. Cada etapa depende de um servidor MiroFish configurado e só é iniciada por você.</p>
+      </div>
+      <aside class="privacy-aside">
+        <strong>Ambiente isolado</strong>
+        <p>Não lê seus aportes, histórico, TXIDs ou chaves. Não modifica o portfólio e não executa compras ou vendas.</p>
+      </aside>
+    </div>
+    <div class="notice" role="note">
+      <span aria-hidden="true">ⓘ</span>
+      <span><strong>Simulação ≠ previsão.</strong> O relatório é uma narrativa hipotética gerada por IA. Não constitui probabilidade calibrada, sinal de trading nem aconselhamento financeiro.</span>
+    </div>
+    <div class="workspace">
+      <section class="panel" aria-labelledby="define-title">
+        <div class="panel-head"><span class="step-number">01</span><div><span class="kicker">ENTRADA</span><h2 id="define-title">Definir o cenário</h2></div></div>
+        <p class="helper">Digite apenas informações públicas ou fictícias. O texto abaixo será enviado ao servidor externo após seu consentimento.</p>
+        <form id="scenarioForm">
+          <label for="scenarioName">Nome do cenário</label>
+          <input id="scenarioName" name="scenarioName" maxlength="120" value="Reação a um evento de mercado BTC" required />
+          <label for="scenarioQuestion">Pergunta da simulação</label>
+          <textarea id="scenarioQuestion" name="scenarioQuestion" rows="3" maxlength="5000" required>Como agentes com perfis diferentes poderiam reagir a este evento hipotético envolvendo o Bitcoin?</textarea>
+          <label for="scenarioSeed">Contexto para os agentes</label>
+          <textarea id="scenarioSeed" name="scenarioSeed" rows="6" maxlength="100000" placeholder="Exemplo: Em um cenário fictício, surge uma nova proposta de regulamentação para negociação de Bitcoin. Descreva premissas, participantes e horizonte temporal..." required></textarea>
+          <label class="consent-line" for="scenarioConsent"><input id="scenarioConsent" name="scenarioConsent" type="checkbox" required /><span>Confirmo que revisei o texto e autorizo o envio deste contexto ao servidor MiroFish configurado. Estou ciente de que a simulação pode gerar custos de API.</span></label>
+          <button class="accent-button full" type="submit" id="createContextBtn">Criar contexto e ontologia <span aria-hidden="true">↗</span></button>
+        </form>
+      </section>
+      <section class="panel" aria-labelledby="pipeline-title">
+        <div class="panel-head"><span class="step-number">02</span><div><span class="kicker">PROCESSAMENTO</span><h2 id="pipeline-title">Pipeline da simulação</h2></div></div>
+        <p class="helper">Avance manualmente depois de cada confirmação. Consultas de progresso não iniciam novas execuções.</p>
+        <ol class="pipeline">
+          <li class="pipeline-item">
+            <div class="pipeline-head"><div><span class="pipeline-count">01 / GRAPH</span><h3>Grafo de relações</h3></div><span id="graphStatus" class="status">Bloqueado</span></div>
+            <p>Relaciona entidades e informações do cenário no mecanismo de memória.</p>
+            <div class="actions"><button id="buildGraphBtn" disabled>Construir grafo</button><button class="secondary" id="refreshGraphBtn" disabled>Consultar</button></div>
+            <progress id="graphProgress" max="100" value="0" aria-label="Progresso da criação do grafo"></progress>
+          </li>
+          <li class="pipeline-item">
+            <div class="pipeline-head"><div><span class="pipeline-count">02 / AGENTS</span><h3>Agentes simulados</h3></div><span id="prepareStatus" class="status">Bloqueado</span></div>
+            <p>Cria a simulação e prepara os perfis dos agentes.</p>
+            <div class="actions"><button id="createSimulationBtn" disabled>Criar simulação</button><button id="prepareSimulationBtn" disabled>Preparar agentes</button><button class="secondary" id="refreshPrepareBtn" disabled>Consultar</button></div>
+            <progress id="prepareProgress" max="100" value="0" aria-label="Progresso da preparação dos agentes"></progress>
+          </li>
+          <li class="pipeline-item">
+            <div class="pipeline-head"><div><span class="pipeline-count">03 / EXECUTION</span><h3>Execução social</h3></div><span id="runStatus" class="status">Bloqueado</span></div>
+            <p>Inicia a simulação e acompanha as interações dos agentes.</p>
+            <div class="actions"><button id="startSimulationBtn" disabled>Iniciar execução</button><button class="secondary" id="refreshRunBtn" disabled>Consultar</button></div>
+            <progress id="runProgress" max="100" value="0" aria-label="Progresso da execução"></progress>
+          </li>
+          <li class="pipeline-item">
+            <div class="pipeline-head"><div><span class="pipeline-count">04 / REPORT</span><h3>Relatório de cenário</h3></div><span id="reportStatus" class="status">Bloqueado</span></div>
+            <p>Gera uma análise textual somente após a execução terminar.</p>
+            <div class="actions"><button id="generateReportBtn" disabled>Gerar relatório</button><button class="secondary" id="refreshReportBtn" disabled>Consultar</button><button id="loadReportBtn" disabled>Abrir relatório</button></div>
+            <progress id="reportProgress" max="100" value="0" aria-label="Progresso do relatório"></progress>
+          </li>
+        </ol>
+      </section>
+    </div>
+    <section class="panel session-panel" aria-labelledby="session-title">
+      <div class="session-top"><div><span class="kicker">IDENTIFICADORES TEMPORÁRIOS</span><h2 id="session-title">Sessão de pesquisa</h2></div><button class="secondary" id="copyIdsBtn" type="button">Copiar IDs</button></div>
+      <p class="helper">Os IDs ficam somente na memória desta página e desaparecem ao recarregar. Guarde-os para diagnóstico ou recuperação pelo operador do servidor.</p>
+      <dl class="id-list">
+        <div><dt>Projeto</dt><dd id="projectId">—</dd></div>
+        <div><dt>Grafo</dt><dd id="graphId">—</dd></div>
+        <div><dt>Simulação</dt><dd id="simulationId">—</dd></div>
+        <div><dt>Relatório</dt><dd id="reportId">—</dd></div>
+      </dl>
+    </section>
+    <section class="panel report-panel" id="reportPanel" hidden aria-labelledby="result-title">
+      <span class="kicker">RESULTADO / TEXTO ORIGINAL</span>
+      <h2 id="result-title">Relatório gerado pelo MiroFish</h2>
+      <p class="helper">Conteúdo apresentado como texto puro, sem executar HTML ou scripts retornados pelo modelo.</p>
+      <pre id="reportBody" class="report-body"></pre>
+    </section>
+    <div id="feedback" class="feedback" role="status" aria-live="polite">Nenhuma operação iniciada. O serviço MiroFish requer um gateway privado autenticado.</div>
+    <footer>BTC JOURNAL / SCENARIO LAB <span>SEM VÍNCULO COM SALDOS REAIS • SEM NEGOCIAÇÃO AUTOMÁTICA</span></footer>
+  </main>
+</body>
+</html>
