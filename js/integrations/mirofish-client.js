@@ -152,8 +152,13 @@ export function createMiroFishClient({
     });
   }
 
-  function getReportStatus(reportId) {
-    return request('/api/report/generate/status?report_id=' + validateId(reportId, 'reportId'));
+  // Upstream utiliza POST com task_id e/ou simulation_id, não GET por report_id.
+  function getReportStatus({ taskId, simulationId } = {}) {
+    if (!taskId && !simulationId) throw new TypeError('Informe taskId ou simulationId.');
+    const json = {};
+    if (taskId) json.task_id = validateId(taskId, 'taskId');
+    if (simulationId) json.simulation_id = validateId(simulationId, 'simulationId');
+    return request('/api/report/generate/status', { method: 'POST', json });
   }
 
   function getReport(reportId) {
