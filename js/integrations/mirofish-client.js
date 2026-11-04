@@ -63,7 +63,7 @@ export function createMiroFishClient({
   }
 
   async function request(path, { method = 'GET', json, formData } = {}) {
-    const controller = new AbortController();
+    const controller = new globalThis.AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const headers = { Accept: 'application/json' };
@@ -89,9 +89,9 @@ export function createMiroFishClient({
   }
 
   function generateOntologyFromText({ projectName, requirement, seedText, context = '' }) {
-    const form = new FormData();
+    const form = new globalThis.FormData();
     const content = nonEmptyText(seedText, 'Texto de contexto', 100000);
-    form.append('files', new Blob([content], { type: 'text/plain' }), 'btc-scenario.txt');
+    form.append('files', new globalThis.Blob([content], { type: 'text/plain' }), 'btc-scenario.txt');
     form.append('simulation_requirement', nonEmptyText(requirement, 'Pergunta', 5000));
     form.append('project_name', nonEmptyText(projectName, 'Projeto', 120));
     if (context) form.append('additional_context', nonEmptyText(context, 'Contexto', 5000));
