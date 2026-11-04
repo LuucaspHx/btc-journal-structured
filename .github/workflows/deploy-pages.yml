@@ -33,6 +33,7 @@ jobs:
           mkdir -p dist
           cp index.html dist/
           cp -R css js dist/
+          if [ -d labs ]; then cp -R labs dist/; fi
           if [ -d data ]; then cp -R data dist/; fi
 
       - name: Upload artifact for GitHub Pages
